@@ -53,6 +53,20 @@ class Ship:
             return self.x, self.y, self.x, self.y + self.size - 1
         raise ValueError('у корабля задано неизвестное напрвление (?)')
 
+    @classmethod
+    def get_ship_by_crd(cls, x, y, ships) -> 'Ship':
+        for ship in ships:
+            x0, y0, x1, y1 = ship.get_rect()
+            if x0 <= x <= x1 and y0 <= y <= y1:
+                return ship
+
+    def is_death(self, my_field):
+        x0, y0, x1, y1 = self.get_rect()
+        for x in range(x0, x1):
+            for y in range(y0, y1):
+                if my_field[x, y] == MyFildCells.intact_ship:
+                    return False
+
     def __str__(self):
         return f'({self.x}, {self.y}) x{self.size}: {self.dir.name}'
 
@@ -61,14 +75,15 @@ class Ship:
 
 
 class RandomShipsSetter:
-    def __init__(self):
-        self.possible_crds_for_ships = self.get_possible_crds_for_ships()
+    def __init__(self, ships_count):
+        self.ships_count = ships_count
+        self.possible_crds_for_ships = self.get_possible_crds_for_ships(self.ships_count)
 
     @classmethod
-    def set_random_ships(cls, field):
+    def set_random_ships(cls, field, ships_count):
         ships = []
-        ships_setter = RandomShipsSetter()
-        for ship_size, count in SHIPS_COUNT.items():
+        ships_setter = RandomShipsSetter(ships_count)
+        for ship_size, count in ships_setter.ships_count.items():
             for _ in range(count):
                 ship = ships_setter.get_random_possible_ship(ship_size)
                 ships_setter.update_possible_crds_for_ships(ship)
@@ -97,10 +112,10 @@ class RandomShipsSetter:
                 my_field[x, y] = MyFildCells.intact_ship
 
     @staticmethod
-    def get_possible_crds_for_ships():
+    def get_possible_crds_for_ships(ships_count):
         # possible_crds_for_ships[direction][size] = {(0,0), (0,1) ... (7,9)}
         # - все возмножные точки, в которых будет верхний левый угол соотвествующего корабля
-        ships_sises = SHIPS_COUNT.keys()
+        ships_sises = ships_count.keys()
         possible_crds_for_ships = {Dir.v: {}, Dir.h: {}}
         for s in ships_sises:
             possible_crds_for_ships[Dir.v][s] = set()
@@ -121,14 +136,14 @@ class RandomShipsSetter:
         и чистит из possible_crds_for_ships лишние координаты
         """
 
-        # нужно удилить все координаты из области [x0-s, x1+1] x [y0-1, y1+1] для горизонтальных кораблей размера s
+        # нужно удалить все координаты из области [x0-s, x1+1] x [y0-1, y1+1] для горизонтальных кораблей размера s
         #                                    и из [x0-1, x1+1] x [y0-s, y1+1] для веритикльных размера s
         # x0y0 - верхняя левая точка нового корабля
         # x1y1 - нижняя правая точка нового корабля
 
         x0, y0, x1, y1 = ship.get_rect()
 
-        for s in SHIPS_COUNT.keys():
+        for s in self.ships_count.keys():
             for x in range(x0 - s, x1 + 1 + 1):
                 for y in range(y0 - 1, y1 + 1 + 1):
                     # if x0 <= x <= x1 and y0 <= y <= y1: continue
@@ -145,14 +160,44 @@ class RandomShipsSetter:
                         pass
 
 
-class IntactShipsCounter:
+# class IntactShipsCounter:
+#     """
+#     Хранит количество живых частей корабля, связанных с данной клеткой
+#     Например если IntactShipsCounter[(2,3)] == 3, то у корабля, содержащего клетку (2,3) есть еще 3 живые клетки
+#     Это нужно, чтобы определять, ранен или убил корабль
+#     """
+# 
+#     def __init__(self, ships):
+#         self.ship_id_by_crd = {}
+#         self.intact_count_by_ship_id = {}
+#         for ship_id, ship in enumerate(ships):
+#             x0, y0, x1, y1 = ship.get_rect()
+#             self.intact_count_by_ship_id[ship_id] = ship.size
+#             for y in range(y0, y1 + 1):
+#                 for x in range(x0, x1 + 1):
+#                     self.ship_id_by_crd[(x, y)] = ship_id
+# 
+#     # def get_count(self, x, y):
+#     #     return self.intact_count_by_ship_id[self.ship_id_by_crd[(x,y)]]
+# 
+#     def __getitem__(self, crd):
+#         if crd in self.ship_id_by_crd:
+#             return self.intact_count_by_ship_id[self.ship_id_by_crd[crd]]
+#         return None
+# 
+#     def __setitem__(self, key, value):
+#         self.intact_count_by_ship_id[self.ship_id_by_crd[key]] = value
+
+class ShipsTracker:
     """
-    Хранит количество живых частей корабля, связанных с данной клеткой
-    Например если IntactShipsCounter[(2,3)] == 3, то у корабля, содержащего клетку (2,3) есть еще 3 живые клетки
-    Это нужно, чтобы определять, ранен или убил корабль
+    Отслеживает количество живых кораблей, количество живых клеток у каждого корабля
+    # Хранит количество живых частей корабля, связанных с данной клеткой
+    # Например если IntactShipsCounter[(2,3)] == 3, то у корабля, содержащего клетку (2,3) есть еще 3 живые клетки
+    # Это нужно, чтобы определять, ранен или убил корабль
     """
 
     def __init__(self, ships):
+        self.alive_ships_count = len(ships)
         self.ship_id_by_crd = {}
         self.intact_count_by_ship_id = {}
         for ship_id, ship in enumerate(ships):
@@ -161,10 +206,7 @@ class IntactShipsCounter:
             for y in range(y0, y1 + 1):
                 for x in range(x0, x1 + 1):
                     self.ship_id_by_crd[(x, y)] = ship_id
-
-    # def get_count(self, x, y):
-    #     return self.intact_count_by_ship_id[self.ship_id_by_crd[(x,y)]]
-
+    
     def __getitem__(self, crd):
         if crd in self.ship_id_by_crd:
             return self.intact_count_by_ship_id[self.ship_id_by_crd[crd]]
@@ -175,12 +217,18 @@ class IntactShipsCounter:
 
 
 class Player:
-    def __init__(self):
-        self.my_field = np.full((FIELD_WIDTH, FIELD_HEIGHT), MyFildCells.empty)
-        self.other_field = np.full((FIELD_WIDTH, FIELD_HEIGHT), OppenentCells.unknown)
-        ships = RandomShipsSetter.set_random_ships(self.my_field)
-        self.intact_counter = IntactShipsCounter(ships)  # счетчик живых клеток у каждого корабля
-        self.intact_ships_count = len(ships)  # количество живых кораблей всего
+    def __init__(self, w, h, ships_count):
+        self.my_field = np.full((w, h), MyFildCells.empty)
+        self.ships_count = ships_count
+        # self.other_field = np.full((FIELD_WIDTH, FIELD_HEIGHT), OppenentCells.unknown)
+        self.ships = RandomShipsSetter.set_random_ships(self.my_field, ships_count)
+        self.ships_tracker = ShipsTracker(self.ships)  # счетчик живых клеток у каждого корабля
+        # self.intact_ships_count = len(ships)  # количество живых кораблей всего
+
+        self.opponent = None
+
+    def set_opponent(self, other_player: 'Player'):
+        self.opponent = other_player
 
     def get_shoot(self, x, y):
         if self.my_field[x, y] in (MyFildCells.empty, MyFildCells.destroyed_ship):
@@ -188,6 +236,9 @@ class Player:
             return ShootStatus.miss
         elif self.my_field[x, y] == MyFildCells.intact_ship:
             self.my_field[x, y] = MyFildCells.destroyed_ship
+            if Ship.get_ship_by_crd(x, y, self.ships).is_death(self.my_field):
+                self.ships_tracker.get_shoot(x, y)
+
             self.intact_counter[x, y] -= 1
             if self.intact_counter[x, y] < 0: raise Exception('Невозможная ситуация')
             if self.intact_counter[x, y] > 0: return ShootStatus.hit
@@ -204,7 +255,7 @@ class Player:
         self.other_field[x, y] = OppenentCells.ship if is_there_a_ship else OppenentCells.empty
 
 
-class UserInteface:
+class ConsoleInteface:
     str_by_cells = {
         MyFildCells.empty: '. ',
         MyFildCells.intact_ship: '▄▀',
@@ -258,25 +309,23 @@ class Game:
         while True:
             current_player = self.players[self.current_player_index]
             other_player = self.players[(self.current_player_index + 1) % 2]
-            UserInteface.print_fields(current_player.my_field, current_player.other_field,
-                                      self.current_player_index == 0)
+            ConsoleInteface.print_fields(current_player.my_field, current_player.other_field,
+                                         self.current_player_index == 0)
 
             shoot_crd = None
             while shoot_crd is None:
                 shoot_crd = self.try_parse_input_crd(input())
             x, y = shoot_crd
-            
+
             shoot_status = other_player.get_shoot(x, y)
             current_player.mark_shoot(x, y, shoot_status.is_success())
             print(shoot_status)
             if shoot_status == ShootStatus.i_lose:
                 print(f'победил игрок {self.current_player_index + 1}!!!')
                 break
-            
+
             if not shoot_status.is_success():
                 self.current_player_index = (self.current_player_index + 1) % 2
-
-
 
     @staticmethod
     def try_parse_input_crd(inp):
