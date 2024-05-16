@@ -1,3 +1,7 @@
+import random
+
+import numpy as np
+
 from settings import *
 import pygame
 from main import Player, MyFildCells, OpponentCells
@@ -19,7 +23,11 @@ from main import Player, MyFildCells, OpponentCells
 
 class Game:
     def __init__(self):
-        self.players = [Player(4, 15, DEFAULT_SHIPS_COUNT), Player(6, 10, DEFAULT_SHIPS_COUNT)]
+        self.players = [
+            Player(4, 15, DEFAULT_SHIPS_COUNT),
+            # Player(6, 10, DEFAULT_SHIPS_COUNT)
+            RandomAI(6, 10, DEFAULT_SHIPS_COUNT)
+        ]
         self.players[0].set_opponent(self.players[1])
         self.players[1].set_opponent(self.players[0])
         self.current_player_index = 0
@@ -40,6 +48,25 @@ class Game:
 
         return result
 
+
+class AI:
+    pass
+
+
+class RandomAI(AI, Player):
+    def __init__(self, w, h, ships_count):
+        super().__init__(w, h, ships_count)
+
+    def set_opponent(self, other_player: 'Player'):
+        self.opponent = other_player
+        self.other_field = np.full(self.opponent.my_field.shape, OpponentCells.unknown)
+        self.user_marks = np.full(self.opponent.my_field.shape, False, dtype=bool)
+
+    def make_step(self, game: Game, w, h):
+        game.shoot(random.randint(0, w - 1), random.randint(0, h - 1))
+
+
+# у игрока и ии должен быть общий метод, отвечающий за получение следующего хода
 
 class Gui:
     color_by_cell = {
@@ -90,24 +117,29 @@ class Gui:
             if event.type == pygame.QUIT: quit_game()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE: quit_game()
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                mouse_x, mouse_y = pygame.mouse.get_pos()
-                x, y = self.get_field_crd(mouse_x, mouse_y)
-                w, h = self.game.current_player().other_field.shape
-                if not (0 <= x < w and 0 <= y < h): continue
 
-                if event.button == 1:
-                    if self.game.current_player().other_field[x, y] != OpponentCells.unknown: continue
-                    self.game.shoot(x, y)
-                if event.button == 3:
-                    self.game.current_player().user_marks[x, y] = not self.game.current_player().user_marks[x, y]
+        if isinstance(self.game.current_player(), Player):
+            for event in events:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    mouse_x, mouse_y = pygame.mouse.get_pos()
+                    x, y = self.get_field_crd(mouse_x, mouse_y)
+                    w, h = self.game.current_player().other_field.shape
+                    if not (0 <= x < w and 0 <= y < h): continue
 
+                    if event.button == 1:
+                        if self.game.current_player().other_field[x, y] != OpponentCells.unknown: continue
+                        self.game.shoot(x, y)
+                    if event.button == 3:
+                        self.game.current_player().user_marks[x, y] = not self.game.current_player().user_marks[x, y]
 
     def mainloop(self):
         while True:
             events = pygame.event.get()
             mouce_pressed = pygame.mouse.get_pressed()
             self.process_events(events, mouce_pressed)
+
+            if isinstance(self.game.current_player(), AI):
+                self.game.current_player().make_step(self.game, *self.game.current_player().other_field.shape)
 
             self.sc.fill((0, 0, 0))
             self.draw_ui()
