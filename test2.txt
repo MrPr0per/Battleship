@@ -1,0 +1,49 @@
+- The article "Reversing Packets" describes packet reversing for the Wesnoth game.
+[sound:google-2a861621-6500df7f-0ed823e1-c9f41ed0-841550fb.mp3]
+
+- The goal of this article is to fake a chat packet.
+[sound:google-7f59fd89-b03ba884-31359d1d-ad6036f9-70657f35.mp3]
+
+
+
+- The process of packet reversing begins with analyzing them.
+[sound:google-65f569ee-bda86664-21aa92c8-efafa0ff-1e7579da.mp3]
+
+- By comparing several different packets, we can understand that the data is not stored in plain text.
+[sound:google-0413b165-b8f08e7e-e73e450f-c10e8283-986c9d1c.mp3]
+
+- It can be assumed that the data is somehow compressed.
+[sound:google-6b8c0e23-9168f0aa-fc6ba676-cd083a0f-f1876a15.mp3]
+
+- Since the game works on both Windows and Linux, we can assume that a popular archiver, common to both systems, is used.
+[sound:google-06b07f32-2096b087-9ede43f4-cb7053c7-63c9d90b.mp3]
+
+- After trying out several archivers, we notice that the packets and files compressed with gzip have common header bytes.
+[sound:google-70348cd6-0cdbb9c3-5e76340e-987be277-2b549d20.mp3]
+
+- If we try to unpack a packet using gzip, we will see human-readable data in the form of plain text - this is a success!
+[sound:google-18a4ac5e-b6502556-b0f17392-de33cc7a-e902470d.mp3]
+
+- Now, if we compress our own data using gzip and send it as a packet, we can see that our message appears in the game's chat.
+[sound:google-2e427a81-8bfe07d8-7e0c8d65-59d7b3cd-899eaa28.mp3]
+
+
+
+- As a result, we have the ability to send messages in the chat bypassing the official game client.
+[sound:google-64cedc69-4c8b7cc4-e9ca2f09-3b62eb20-380272b2.mp3]
+
+- In conclusion, it can be said that reversing and modifying packets is quite simple and anyone can do it.
+[sound:google-5e81579a-017df8af-d4132850-0d649c33-200b743b.mp3]
+ 
+
+[sound:google-2a861621-6500df7f-0ed823e1-c9f41ed0-841550fb.mp3]
+[sound:google-7f59fd89-b03ba884-31359d1d-ad6036f9-70657f35.mp3]
+[sound:google-65f569ee-bda86664-21aa92c8-efafa0ff-1e7579da.mp3]
+[sound:google-0413b165-b8f08e7e-e73e450f-c10e8283-986c9d1c.mp3]
+[sound:google-6b8c0e23-9168f0aa-fc6ba676-cd083a0f-f1876a15.mp3]
+[sound:google-06b07f32-2096b087-9ede43f4-cb7053c7-63c9d90b.mp3]
+[sound:google-70348cd6-0cdbb9c3-5e76340e-987be277-2b549d20.mp3]
+[sound:google-18a4ac5e-b6502556-b0f17392-de33cc7a-e902470d.mp3]
+[sound:google-2e427a81-8bfe07d8-7e0c8d65-59d7b3cd-899eaa28.mp3]
+[sound:google-64cedc69-4c8b7cc4-e9ca2f09-3b62eb20-380272b2.mp3]
+[sound:google-5e81579a-017df8af-d4132850-0d649c33-200b743b.mp3]

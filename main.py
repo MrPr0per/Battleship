@@ -294,50 +294,50 @@ class ConsoleInteface:
         return out
 
 
-class Game:
-    def __init__(self):
-        self.players = [Player(10, 11, DEFAULT_SHIPS_COUNT), Player(12, 13, DEFAULT_SHIPS_COUNT)]
-        self.players[0].set_opponent(self.players[1])
-        self.players[1].set_opponent(self.players[0])
-        self.current_player_index = 0
-
-    def game_cycle(self):
-        while True:
-            current_player = self.players[self.current_player_index]
-            other_player = self.players[(self.current_player_index + 1) % 2]
-            ConsoleInteface.print_fields(current_player.my_field, current_player.other_field,
-                                         self.current_player_index == 0)
-
-            shoot_crd = None
-            while shoot_crd is None:
-                shoot_crd = self.try_parse_input_crd(input(), *current_player.my_field.shape)
-            x, y = shoot_crd
-
-            shoot_status = other_player.get_shoot(x, y)
-            current_player.mark_shoot(x, y, shoot_status.is_success())
-            print(shoot_status)
-            if shoot_status == ShootStatus.i_lose:
-                print(f'победил игрок {self.current_player_index + 1}!!!')
-                break
-
-            if not shoot_status.is_success():
-                self.current_player_index = (self.current_player_index + 1) % 2
-
-    @staticmethod
-    def try_parse_input_crd(inp, w, h):
-        if len(inp) < 2: return None
-        letter = inp[0].upper()
-        if letter not in ABC: return None
-        x = ABC.index(letter)
-
-        number = inp[1:]
-        if not number.isdigit(): return None
-        y = int(number) - 1
-
-        if not (0 <= x < w): return None
-        if not (0 <= y < h): return None
-
-        return x, y
+# class Game:
+#     def __init__(self):
+#         self.players = [Player(10, 11, DEFAULT_SHIPS_COUNT), Player(12, 13, DEFAULT_SHIPS_COUNT)]
+#         self.players[0].set_opponent(self.players[1])
+#         self.players[1].set_opponent(self.players[0])
+#         self.current_player_index = 0
+# 
+#     def game_cycle(self):
+#         while True:
+#             current_player = self.players[self.current_player_index]
+#             other_player = self.players[(self.current_player_index + 1) % 2]
+#             ConsoleInteface.print_fields(current_player.my_field, current_player.other_field,
+#                                          self.current_player_index == 0)
+# 
+#             shoot_crd = None
+#             while shoot_crd is None:
+#                 shoot_crd = self.try_parse_input_crd(input(), *current_player.my_field.shape)
+#             x, y = shoot_crd
+# 
+#             shoot_status = other_player.get_shoot(x, y)
+#             current_player.mark_shoot(x, y, shoot_status.is_success())
+#             print(shoot_status)
+#             if shoot_status == ShootStatus.i_lose:
+#                 print(f'победил игрок {self.current_player_index + 1}!!!')
+#                 break
+# 
+#             if not shoot_status.is_success():
+#                 self.current_player_index = (self.current_player_index + 1) % 2
+# 
+#     @staticmethod
+#     def try_parse_input_crd(inp, w, h):
+#         if len(inp) < 2: return None
+#         letter = inp[0].upper()
+#         if letter not in ABC: return None
+#         x = ABC.index(letter)
+# 
+#         number = inp[1:]
+#         if not number.isdigit(): return None
+#         y = int(number) - 1
+# 
+#         if not (0 <= x < w): return None
+#         if not (0 <= y < h): return None
+# 
+#         return x, y
 
 
 class Debug:
