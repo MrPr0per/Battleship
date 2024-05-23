@@ -10,6 +10,11 @@ from ai import AI, RandomAI
 from animation import Animation
 from enum import Enum, auto
 
+# перед началом игры другой маинлуп с менюшками: 
+# - выбор левого, правого игрока из (чел, тупой аи, умный аи)
+# - расстановка кораблей
+
+# пофиксить паузы между ходами ии
 
 # TODO: реализовать
 # промах
@@ -20,20 +25,6 @@ from enum import Enum, auto
 
 # ии ходит только когда нет кулдауна
 # если ходит ии, то не нужно показывать его поле (если сейчас не дебаг мод)
-
-
-# done:
-# база:
-#   - отображение полей в зависимости от игрока
-#   - возможность кликать и взаимодействовать
-#   - возможность отмечать клетки как пустые (как флажки в сапере)
-#   - подсветка клетки при наведении
-# фичи:
-#   - взрыв/всплеск при попадании или промахе (со звуком)
-#   - спрайты кораблей, фона
-# 
-# выстрел, видишь результат, скрываешь поле, передаешь управление
-#
 
 class GuiGameState(Enum):
     player_is_move = auto()
@@ -203,23 +194,22 @@ class Gui:
             keys_pressed = pygame.key.get_pressed()
             self.process_events(events, mouce_pressed, keys_pressed)
 
-            
             if isinstance(self.game.current_opponent(), AI) and self.game.is_need_to_change_player:
                 self.game.change_player()
             if isinstance(self.game.current_player(), AI):
                 if self.game.current_player().is_ready():
-                    if self.game.is_need_to_change_player: 
+                    if self.game.is_need_to_change_player:
                         self.game.current_player().end_step_time = None
                         self.game.change_player()
                     else:
                         x, y = self.game.current_player().make_step(self.game)
                         # self.game.current_player().make_step(self.game, *self.game.current_player().other_field.shape)
-        
+
                         if self.game.last_shoot_result.is_success():
                             self.animations.add(Animation(*self.get_sc_crd(x, y), 'BOOM'))
                         else:
                             self.animations.add(Animation(*self.get_sc_crd(x, y), 'BULK'))
-                
+
             self.animations = {anim for anim in self.animations if not anim.is_over()}
 
             self.sc.fill((0, 0, 0))
