@@ -24,9 +24,14 @@ from enum import Enum, auto
 # + предустановленные параметры, чтобы прокликать "далее"
 
 class RenderedTextHolder:
-    def __init__(self, font, color=(255, 255, 255)):
+    def __init__(self, font=DEFAULT_FONT_NAME, color=(255, 255, 255), font_size=DEFAULT_FONT_SIZE):
         self.renders = {}
-        self.font = font
+        if isinstance(font, str):
+            self.font = pygame.font.SysFont(font, font_size)
+        elif isinstance(font, pygame.font.Font):
+            self.font = font
+        else:
+            raise TypeError()
         self.color = color
 
     def __getitem__(self, string) -> pygame.Surface:
@@ -90,15 +95,19 @@ class Button:
         ))
 
 
-class Screen:
-    def __init__(self, sc):
-        self.font_renders_holder = RenderedTextHolder(pygame.font.SysFont('Lucida Console', 24))
+class SettingsScreen:
+    def __init__(self, sc, settings):
+        self.settings = settings
+
+        self.font_size = 24
+        self.button_h = 32
+        self.font_renders_holder = RenderedTextHolder(pygame.font.SysFont('Lucida Console', self.font_size))
         self.sc = sc
 
         next_button_w = self.sc.get_width() / 10
-        next_button_h = 32
+        # next_button_h = 32
         self.next_button = Button(self.sc.get_width() * 19 / 20 - next_button_w, self.sc.get_height() * 9 / 10,
-                                  next_button_w, next_button_h, self.font_renders_holder['next'], (100, 200, 100))
+                                  next_button_w, self.button_h, self.font_renders_holder['next'], (100, 200, 100))
 
     def draw(self):
         self.next_button.draw(self.sc)
@@ -107,9 +116,9 @@ class Screen:
         self.next_button.process_events(events, mouce_pressed, keys_pressed)
 
 
-class ChoosePlayersScreen(Screen):
-    def __init__(self, sc: pygame.Surface):
-        super().__init__(sc)
+class ChoosePlayersScreen(SettingsScreen):
+    def __init__(self, sc: pygame.Surface, settings: 'Settings'):
+        super().__init__(sc, settings)
 
         w, h = sc.get_size()
         column_width = w / 3
@@ -170,32 +179,46 @@ class ChoosePlayersScreen(Screen):
         for b in self.right_buttons:
             b.process_events(events, mouce_pressed, keys_pressed)
 
-    def update_settings(self, settings: 'Settings'):
+    def update_settings(self):
         for i, b in enumerate(self.left_buttons):
             if b.is_pressed:
-                if i == 0: settings.left_settings.player_identity = PlayerIdentity.human
-                if i == 1: settings.left_settings.player_identity = PlayerIdentity.randomAI
-                if i == 2: settings.left_settings.player_identity = PlayerIdentity.smartAI
+                if i == 0: self.settings.left_settings.player_identity = PlayerIdentity.human
+                if i == 1: self.settings.left_settings.player_identity = PlayerIdentity.randomAI
+                if i == 2: self.settings.left_settings.player_identity = PlayerIdentity.smartAI
                 break
 
         for i, b in enumerate(self.right_buttons):
             if b.is_pressed:
-                if i == 0: settings.right_settings.player_identity = PlayerIdentity.human
-                if i == 1: settings.right_settings.player_identity = PlayerIdentity.randomAI
-                if i == 2: settings.right_settings.player_identity = PlayerIdentity.smartAI
+                if i == 0: self.settings.right_settings.player_identity = PlayerIdentity.human
+                if i == 1: self.settings.right_settings.player_identity = PlayerIdentity.randomAI
+                if i == 2: self.settings.right_settings.player_identity = PlayerIdentity.smartAI
                 break
 
 
-class SetShipsScreen(Screen):
+class SetShipsScreen(SettingsScreen):
     pass
 
 
-class ChooseTimeScreen(Screen):
+class ClockSettings:
+    def __init__(self, player_settings:'PlayerSettings', center_x, center_y):
+        self.player_settings = player_settings
+
+        render_holder_for_buttons = RenderedTextHolder()
+        lael_font = pygame.font.SysFont(DEFAULT_FONT_NAME, 48)
+
+        
+
+        self.button_m_plus = Button()
+
+    def get_clock_string(self):
+        total_seconds = self.player_settings.time_to_game.seconds
+        return f'{total_seconds // 60}:{total_seconds % 60}'
+        
+class ChooseTimeScreen(SettingsScreen):
     def __init__(self, sc, settings: 'Settings'):
-        super().__init__(sc)
-        self.settings = settings
-        
-        
+        super().__init__(sc, settings)
+
+        self.
 
     def draw(self):
         super().draw()
@@ -206,8 +229,6 @@ class ChooseTimeScreen(Screen):
                      (self.sc.get_width() / 4 - player1_surf.get_width() / 2, self.sc.get_height() / 4))
         self.sc.blit(player2_surf,
                      (self.sc.get_width() * 3 / 4 - player2_surf.get_width() / 2, self.sc.get_height() / 4))
-
-        
 
     def process_events(self, events, mouce_pressed, keys_pressed):
         super().process_events(events, mouce_pressed, keys_pressed)
@@ -258,9 +279,11 @@ class Settings:
 
 class ScreensController:
     def __init__(self, sc, clock):
+        self.settings = Settings()
+
         self.screens = [
             ChoosePlayersScreen(sc),
-            ChooseTimeScreen(sc),
+            ChooseTimeScreen(sc, self.settings),
         ]
         self.current_screen_index = 0
 
@@ -268,8 +291,6 @@ class ScreensController:
         self.clock = clock
 
         self.all_fields_is_filled = False
-
-        self.settings = Settings()
 
     def get_current_screen(self):
         return self.screens[self.current_screen_index]
