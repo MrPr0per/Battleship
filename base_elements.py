@@ -61,6 +61,15 @@ class ShipRect:
             return self.x, self.y, self.x, self.y + self.size - 1
         raise ValueError('у корабля задано неизвестное напрвление (?)')
 
+    @staticmethod
+    def get_ships_count(ships: list['ShipRect']):
+        count = {}
+        for ship in ships:
+            size = ship.size
+            if size not in count: count[size] = 0
+            count[size] += 1
+        return count
+
     def __str__(self):
         return f'({self.x}, {self.y}) x{self.size}: {self.dir.name}'
 

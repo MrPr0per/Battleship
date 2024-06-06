@@ -51,7 +51,8 @@ class Game:
             # RandomAI(10, 10, DEFAULT_SHIPS_COUNT),
             # # RandomAI(6, 10, DEFAULT_SHIPS_COUNT),
 
-            pl1_class(*settings.left_settings.field_size, ) # TODO
+            pl1_class(*settings.left_settings.field_size, settings.left_settings.ships),
+            pl2_class(*settings.left_settings.field_size, settings.left_settings.ships),
         ]
         self.players[0].set_opponent(self.players[1])
         self.players[1].set_opponent(self.players[0])

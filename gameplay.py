@@ -11,11 +11,10 @@ class RandomShipsSetter:
         self.possible_crds_for_ships = self.get_possible_crds_for_ships(self.ships_count, w, h)
 
     @classmethod
-    def set_random_ships(cls, field, ships_count):
-        n_tries = 20
+    def get_random_ships(cls, w, h, ships_count, n_tries=20):
         for i in range(n_tries):
             try:
-                ships = cls.try_set_ships(*field.shape, ships_count)
+                ships = cls.try_get_ships(w, h, ships_count)
                 break
             except:
                 pass
@@ -23,13 +22,23 @@ class RandomShipsSetter:
             raise Exception(f'за {n_tries} попыток случайной расстановки '
                             f'заполнить поле не удалось (кораблей слишком много)')
 
+        return ships
+
+    @classmethod
+    def set_ships(cls, field, ships: list[ShipRect]):
         for ship in ships:
             cls.set_ship(field, ship)
+
+    @classmethod
+    def set_random_ships(cls, field, ships_count, n_tries=20):
+        ships = cls.get_random_ships(*field.shape, ships_count, n_tries)
+
+        cls.set_ships(field, ships)
 
         return ships
 
     @classmethod
-    def try_set_ships(cls, field_w, field_h, ships_count):
+    def try_get_ships(cls, field_w, field_h, ships_count):
         ships = []
         ships_setter = RandomShipsSetter(ships_count, field_w, field_h)
         for ship_size, count in ships_setter.ships_count.items():
@@ -51,10 +60,9 @@ class RandomShipsSetter:
                 return ship
             except IndexError:
                 continue
-        raise Exception('для корабля нет места')
+        raise Exception(f'для корабля размера {ship_size} нет места')
         # raise Exception(f'для корабля такого размера нет места:'
-                        # f'{Debug.show_possible_crds_for_ships(self.possible_crds_for_ships, ship_sizes=(ship_size,))}')
-
+        # f'{Debug.show_possible_crds_for_ships(self.possible_crds_for_ships, ship_sizes=(ship_size,))}')
 
     @classmethod
     def set_ship(cls, my_field, ship):
@@ -139,12 +147,15 @@ class IntactShipsCounter:
 
 
 class Player:
-    def __init__(self, w, h, ships_count):
+    def __init__(self, w, h, ships: list[ShipRect]):
         # self.my_field = my_field
 
         self.my_field = np.full((w, h), MyCell.empty)
-        self.ships_count = ships_count
-        self.ships = RandomShipsSetter.set_random_ships(self.my_field, ships_count)
+        self.ships_count = ShipRect.get_ships_count(ships)
+        # self.ships = RandomShipsSetter.set_random_ships(self.my_field, ships_count)
+        self.ships = ships
+        RandomShipsSetter.set_ships(self.my_field, self.ships)
+
         self.intact_counter = IntactShipsCounter(self.ships)  # счетчик живых клеток у каждого корабля
         self.intact_ships_count = len(self.ships)  # количество живых кораблей всего
 

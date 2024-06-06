@@ -273,9 +273,10 @@ class ChooseTimeScreen(SettingsScreen):
 # region SetShipsScreen
 
 class FieldToSetShips:
-    def __init__(self, w, h):
-        self.ships: list[ShipRect] = []
+    def __init__(self, w, h, player_settings: 'PlayerSettings'):
         self.w, self.h = w, h
+        self.player_settings = player_settings
+        self.ships: list[ShipRect] = player_settings.ships
 
     def validate(self, ship: ShipRect) -> bool:
         """проверяет, что корабль может находиться на поле"""
@@ -314,7 +315,7 @@ class FieldToSetShips:
         self.h = new_h
 
         old_ships = self.ships
-        self.ships = []
+        self.ships.clear()
         deleted_ships = []
 
         for ship in old_ships:
@@ -326,14 +327,14 @@ class FieldToSetShips:
 
     def clear(self):
         ships = self.ships
-        self.ships = []
+        self.ships.clear()
         return ships
 
 
 class FieldSettingsPanel(IDrawedOnScreen, IEventProcessed):
     def __init__(self, player_settings: 'PlayerSettings', center_x, center_y, cell_size, is_left=True):
         self.player_settings = player_settings
-        self.field = FieldToSetShips(*player_settings.field_size)
+        self.field = FieldToSetShips(*player_settings.field_size, player_settings)
         self.deleted_ships = []
 
         self.cell_size = cell_size
@@ -660,7 +661,7 @@ class ShipPickingController(IEventProcessed, IDrawedOnScreen):
                 ships = RandomShipsSetter.set_random_ships(
                     np.full((self.field_panel.field.w, self.field_panel.field.h), MyCell.empty),
                     self.field_panel.player_settings.ships_count)
-                self.field_panel.field.ships = ships  # TODO небезопасное присваивание
+                self.field_panel.field.ships[:] = ships
                 for i in range(1, 4 + 1):
                     self.ships_panel.set_count(i, 0)
 
@@ -736,7 +737,7 @@ class PlayerSettings:
 
         self.field_size = [10, 10]
         self.ships_count = DEFAULT_SHIPS_COUNT.copy()
-        self.ships: list[ShipRect] = []
+        self.ships: list[ShipRect] = RandomShipsSetter.get_random_ships(*self.field_size, self.ships_count)
 
 
 class Settings:
@@ -779,6 +780,7 @@ class ScreensController:
         # по завершении возвращает объект со всеми собранными данными
 
         while True:
+            # print(self.settings.right_settings.ships)
             events = pygame.event.get()
             mouce_pressed = pygame.mouse.get_pressed()
             keys_pressed = pygame.key.get_pressed()
