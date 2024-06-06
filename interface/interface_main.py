@@ -1,15 +1,13 @@
 import datetime
-import random
-import time
 
 import numpy as np
 
+from gameplay import RandomShipsSetter
+from interface.base_elements_of_interface import IDrawedOnScreen, IEventProcessed, Button, Label, Grid
 from settings import *
 import pygame
-from main import Player, MyFildCells, OpponentCells, Ship
+from base_elements import ShipRect, Dir, MyCell
 from enum import Enum, auto
-
-from abc import ABC, abstractmethod
 
 
 # нужно сделать окна:
@@ -25,17 +23,6 @@ from abc import ABC, abstractmethod
 #
 #
 # + предустановленные параметры, чтобы прокликать "далее"
-
-class IDrawedOnScreen(ABC):
-    @abstractmethod
-    def draw(self, sc: pygame.Surface):
-        pass
-
-
-class IEventProcessed(ABC):
-    @abstractmethod
-    def process_events(self, events, mouce_pressed, keys_pressed):
-        pass
 
 
 class RenderedTextHolder:
@@ -53,119 +40,6 @@ class RenderedTextHolder:
         if string not in self.renders:
             self.renders[string] = self.font.render(string, True, self.color)
         return self.renders[string]
-
-
-class Button(IDrawedOnScreen, IEventProcessed):
-    def __init__(self, x, y, w, h, text, bg_color, is_sticky=False, other_buttons=None):
-        """
-        :param text - отрендеренный текст или строка
-        :param is_sticky: будет ли кнопка отсаваться нажатой после клика
-        :param other_buttons: другие кнопки, которые отожмутся при нажатии на эту 
-        """
-        self.x = x
-        self.y = y
-        self.w = w
-        self.h = h
-
-        if isinstance(text, str):
-            text = DEFAULT_FONT.render(text, True, WHITE)
-        if not isinstance(text, pygame.Surface): raise TypeError()
-
-        self.text_surface = text
-        self.bg_color = bg_color
-
-        self.is_hower = False
-        self.is_pressed = False
-        self.is_click_processed = True
-        self.time_of_click = None
-        self.time_of_last_pressed_update = None
-
-        self.is_sticky = is_sticky
-        self.other_buttons = other_buttons
-
-    # @classmethod
-    # def simple_init(cls, x, y, w, h, text, font=None, bg_color=RED, text_color=WHITE,
-    #                 is_sticky=False, other_buttons=None):
-    #     if font is None:
-    #         font = DEFAULT_FONT
-    #     return Button(x, y, w, h, font.render(text, True, text_color), bg_color, is_sticky, other_buttons)
-
-    def is_clicked(self):
-        if self.is_click_processed: return False
-        self.is_click_processed = True
-        return True
-
-    def is_long_pressed(self):
-        t = time.time()
-        if not self.is_pressed: return False
-        if t - self.time_of_click < 0.2: return False
-        if self.time_of_last_pressed_update is not None and t - self.time_of_last_pressed_update < 1 / 12: return False
-        self.time_of_last_pressed_update = t
-        return True
-
-    def process_events(self, events, mouce_pressed, keys_pressed):
-        x, y = pygame.mouse.get_pos()
-        is_mouce_pressed = any(mouce_pressed)
-
-        self.is_hower = self.x <= x <= self.x + self.w and self.y <= y <= self.y + self.h
-
-        if not self.is_sticky:
-            if not is_mouce_pressed: self.is_pressed = False
-
-        if not self.is_hower: return
-
-        for e in events:
-            e: pygame.event.Event
-            if e.type == pygame.MOUSEBUTTONDOWN:
-                self.is_pressed = True
-                self.is_click_processed = False
-                self.time_of_click = time.time()
-
-                if self.other_buttons is not None:
-                    for b in self.other_buttons:
-                        b: 'Button'
-                        b.is_pressed = False
-
-    def draw(self, sc: pygame.Surface):
-        color = self.bg_color
-        if self.is_pressed:
-            color = [i * 0.5 for i in color]
-        elif self.is_hower:
-            color = [i * 0.7 for i in color]
-
-        pygame.draw.rect(sc, color, (self.x, self.y, self.w, self.h), border_radius=3)
-
-        sc.blit(self.text_surface, (
-            self.x + self.w / 2 - self.text_surface.get_width() / 2,
-            self.y + self.h / 2 - self.text_surface.get_height() / 2
-        ))
-
-    def set_pos(self, new_x, new_y):
-        self.x = new_x
-        self.y = new_y
-
-
-class Label(IDrawedOnScreen):
-    def __init__(self, center_x, center_y, text, font: pygame.font.Font, color=WHITE):
-        self.center_x = center_x
-        self.center_y = center_y
-        self.font = font
-        self.color = color
-
-        self.render = font.render(text, True, color)
-
-    def w(self):
-        return self.render.get_width()
-
-    def h(self):
-        return self.render.get_height()
-
-    def draw(self, sc: pygame.Surface):
-        sc.blit(self.render, (self.center_x - self.render.get_width() / 2,
-                              self.center_y - self.render.get_height() / 2))
-
-    def change_text(self, new_text):
-        self.render = self.font.render(new_text, True, self.color)
 
 
 class SettingsScreen(IEventProcessed):
@@ -398,64 +272,74 @@ class ChooseTimeScreen(SettingsScreen):
 
 # region SetShipsScreen
 
-class Grid(IDrawedOnScreen):
-    def __init__(self, center_x, center_y, n_cells_horisontal, n_cells_vertical, cell_size, bg_color=None,
-                 grid_color=WHITE):
-        self.center_x = center_x
-        self.center_y = center_y
-        self.n_cells_horisontal = n_cells_horisontal
-        self.n_cells_vertical = n_cells_vertical
-        self.cell_size = cell_size
-        self.bg_color = bg_color
-        self.grid_color = grid_color
+class FieldToSetShips:
+    def __init__(self, w, h):
+        self.ships: list[ShipRect] = []
+        self.w, self.h = w, h
 
-    def set_size(self, new_size):
-        self.n_cells_horisontal, self.n_cells_vertical = new_size
+    def validate(self, ship: ShipRect) -> bool:
+        """проверяет, что корабль может находиться на поле"""
+        x0, y0, x1, y1 = ship.get_rect()
+        w, h = self.w, self.h
+        if x0 < 0 or y0 < 0 or x1 >= w or y1 >= h: return False
 
-    def w(self):
-        return self.n_cells_horisontal * self.cell_size
+        for placed_ship in self.ships:
+            if self.is_rects_intersect(
+                    x0 - 1, y0 - 1, x1 + 1, y1 + 1,
+                    *placed_ship.get_rect()):
+                return False
 
-    def h(self):
-        return self.n_cells_vertical * self.cell_size
+        return True
 
-    def top_left_corner(self):
-        return self.center_x - self.w() / 2, self.center_y - self.h() / 2
+    @staticmethod
+    def is_rects_intersect(x0_1, y0_1, x1_1, y1_1, x0_2, y0_2, x1_2, y1_2):
+        if x0_2 > x1_1: return False
+        if x1_2 < x0_1: return False
+        if y0_2 > y1_1: return False
+        if y1_2 < y0_1: return False
+        return True
 
-    def draw(self, sc: pygame.Surface):
-        x0 = self.center_x - self.w() / 2
-        y0 = self.center_y - self.h() / 2
-        x1 = x0 + self.n_cells_horisontal * self.cell_size
-        y1 = y0 + self.n_cells_vertical * self.cell_size
+    def try_set_ship(self, ship: ShipRect) -> bool:
+        if self.validate(ship):
+            self.ships.append(ship)
+            return True
+        return False
 
-        if self.bg_color is not None:
-            pygame.draw.rect(sc, self.bg_color, (x0, y0, self.w(), self.h()))
-
-        for i_vert in range(self.n_cells_vertical + 1):
-            for i_hor in range(self.n_cells_horisontal + 1):
-                x = x0 + i_hor * self.cell_size
-                y = y0 + i_vert * self.cell_size
-
-                pygame.draw.line(sc, self.grid_color, (x0, y), (x1, y))
-                pygame.draw.line(sc, self.grid_color, (x, y0), (x, y1))
-
-    def get_field_crd(self, mouse_x, mouse_y):
+    def change_size(self, new_w, new_h) -> list[ShipRect]:
         """
-        :return: координаты на поле противника
+        :return: корабли, которые не влезают на новое поле и были с него удалены
         """
-        topleft_x, topleft_y = self.top_left_corner()
-        x, y = mouse_x - topleft_x, mouse_y - topleft_y
-        x //= self.cell_size
-        y //= self.cell_size
-        return int(x), int(y)
+
+        self.w = new_w
+        self.h = new_h
+
+        old_ships = self.ships
+        self.ships = []
+        deleted_ships = []
+
+        for ship in old_ships:
+            success = self.try_set_ship(ship)
+            if not success:
+                deleted_ships.append(ship)
+
+        return deleted_ships
+
+    def clear(self):
+        ships = self.ships
+        self.ships = []
+        return ships
+
 
 class FieldSettingsPanel(IDrawedOnScreen, IEventProcessed):
     def __init__(self, player_settings: 'PlayerSettings', center_x, center_y, cell_size, is_left=True):
         self.player_settings = player_settings
+        self.field = FieldToSetShips(*player_settings.field_size)
+        self.deleted_ships = []
+
         self.cell_size = cell_size
         self.is_left = is_left
         self.center_x = center_x
         self.center_y = center_y
-
         self.grid = Grid(center_x, center_y, *self.player_settings.field_size, self.cell_size)
 
         if is_left:
@@ -483,6 +367,9 @@ class FieldSettingsPanel(IDrawedOnScreen, IEventProcessed):
                         self.button_w_dec,
                         self.button_w_inc]
 
+        # сетка корабля, устанавливаемого на это поле
+        self.ship_grid: Grid | None = None
+
     def update_buttons_crds(self):
         if self.is_left:
             side_button_x = self.center_x - self.grid.w() / 2 - DEFAULT_BUTTON_MARGIN - DEFAULT_BUTTON_SIZE
@@ -505,6 +392,8 @@ class FieldSettingsPanel(IDrawedOnScreen, IEventProcessed):
         for b in self.buttons:
             b.process_events(events, mouce_pressed, keys_pressed)
 
+        old_size = tuple(self.player_settings.field_size)
+
         if self.button_w_inc.is_clicked():
             self.player_settings.field_size[0] += 1
         if self.button_w_dec.is_clicked():
@@ -517,19 +406,79 @@ class FieldSettingsPanel(IDrawedOnScreen, IEventProcessed):
         self.player_settings.field_size[0] = max(self.player_settings.field_size[0], 1)
         self.player_settings.field_size[1] = max(self.player_settings.field_size[1], 1)
 
-        self.grid.set_size(self.player_settings.field_size)
-        self.update_buttons_crds()
+        new_size = tuple(self.player_settings.field_size)
+        if old_size != new_size:
+            self.deleted_ships = self.field.change_size(*self.player_settings.field_size)
+
+            self.grid.set_size(self.player_settings.field_size)
+            self.update_buttons_crds()
 
     def draw(self, sc: pygame.Surface):
+        for ship in self.field.ships:
+            self.draw_ship(sc, ship)
+
         self.grid.draw(sc)
+        # pygame.display.update()
+        # return
+
         for b in self.buttons:
             b.draw(sc)
+
+        if self.ship_grid is not None and self.field.validate(self.get_shipRect()):
+            sc_x, sc_y = self.ship_grid.top_left_corner()
+            sc_x += self.ship_grid.cell_size / 2
+            sc_y += self.ship_grid.cell_size / 2
+            cell_x, cell_y = self.grid.get_field_crd(sc_x, sc_y)
+
+            pygame.draw.rect(sc, WHITE, (*self.grid.get_sc_crd(cell_x, cell_y),
+                                         self.ship_grid.w(), self.ship_grid.h()), 3)
+
+    def draw_ship(self, sc, ship: ShipRect):
+        cell_x0, cell_y0, cell_x1, cell_y1 = ship.get_rect()
+        cell_w, cell_h = cell_x1 - cell_x0 + 1, cell_y1 - cell_y0 + 1
+        sc_x0, sc_y0 = self.grid.get_sc_crd(cell_x0, cell_y0)
+        pygame.draw.rect(sc, RED, (sc_x0, sc_y0, cell_w * self.cell_size, cell_h * self.cell_size))
+        # pygame.draw.rect(sc, RED, (sc_x0, sc_y0, cell_w * self.cell_size, 100))
+
+    def try_set_ship(self):
+        return self.field.try_set_ship(self.get_shipRect())
+
+    def clear_field(self):
+        return self.field.clear()
+
+    def get_shipRect(self):
+        if self.ship_grid is None: return None
+        sc_x, sc_y = self.ship_grid.top_left_corner()
+        sc_x += self.ship_grid.cell_size / 2
+        sc_y += self.ship_grid.cell_size / 2
+        w, h = self.ship_grid.n_cells_horisontal, self.ship_grid.n_cells_vertical
+        dir_ = Dir.h if w >= h else Dir.v
+        size = max(w, h)
+        cell_x, cell_y = self.grid.get_field_crd(sc_x, sc_y)
+        return ShipRect(dir_, size, cell_x, cell_y)
+
+
+class PickedUpShip:
+    def __init__(self, picking_up_crd, ship_grid: Grid):
+        self.picking_up_crd = picking_up_crd
+        self.ship_grid = ship_grid
+        self.ship_center0 = (self.ship_grid.center_x, self.ship_grid.center_y)
+
+    def copy(self):
+        return PickedUpShip(self.picking_up_crd, self.ship_grid)
+
+    # def get_ShipRect(self):
+    #     w, h = self.ship_grid.n_cells_horisontal, self.ship_grid.n_cells_vertical
+    #     dir_ = Dir.h if w >= h else Dir.v
+    #     size = max(w, h)
+    #     return ShipRect(dir_, size, )
 
 
 class ShipCountPanel(IDrawedOnScreen, IEventProcessed):
     def __init__(self, ship_size, player_settings: 'PlayerSettings', top_side_point, cell_size, ):
         self.player_settings = player_settings
         self.ship_size = ship_size
+        self.cell_size = cell_size
         self.unset_count = self.player_settings.ships_count[self.ship_size]
 
         x0, y0 = top_side_point
@@ -540,23 +489,31 @@ class ShipCountPanel(IDrawedOnScreen, IEventProcessed):
         self.ship_grid = Grid(x0 + cell_size * (2.2 + 3) + cell_size * self.ship_size / 2,
                               y0 + cell_size / 2, self.ship_size, 1, cell_size, RED)
 
-        self.picking_up_crd = None
-        self.put_down_crd = None
+        # self.picked_ship = PickedUpShip(
+        #     None, self.create_picked_up_ship_grid()
+        # )
 
-        self.picked_ship = Grid(0, 0, ship_size, 1, cell_size + 1, BRIGHT_RED)
+        self.picked_ship = None
+
     def get_str(self):
         return f'{self.unset_count}/{self.player_settings.ships_count[self.ship_size]}'
+
+    def create_picked_up_ship_grid(self):
+        return Grid(self.ship_grid.center_x, self.ship_grid.center_y, self.ship_size, 1, self.cell_size + 1, BRIGHT_RED)
 
     def process_events(self, events, mouce_pressed, keys_pressed):
         self.button_dec.process_events(events, mouce_pressed, keys_pressed)
         self.button_inc.process_events(events, mouce_pressed, keys_pressed)
 
-        if self.button_dec.is_clicked():
-            self.player_settings.ships_count[self.ship_size] -= 1
-            if self.player_settings.ships_count[self.ship_size] < 0:
-                self.player_settings.ships_count[self.ship_size] = 0
-            self.label.change_text(self.get_str())
-        if self.button_inc.is_clicked():
+        if self.button_dec.is_clicked() or self.button_dec.is_long_pressed():
+            if self.unset_count > 0:
+                self.unset_count -= 1
+                self.player_settings.ships_count[self.ship_size] -= 1
+                if self.player_settings.ships_count[self.ship_size] < 0:
+                    self.player_settings.ships_count[self.ship_size] = 0
+                self.label.change_text(self.get_str())
+        if self.button_inc.is_clicked() or self.button_inc.is_long_pressed():
+            self.unset_count += 1
             self.player_settings.ships_count[self.ship_size] += 1
             self.label.change_text(self.get_str())
 
@@ -566,16 +523,34 @@ class ShipCountPanel(IDrawedOnScreen, IEventProcessed):
             if e.type == pygame.MOUSEBUTTONDOWN:
                 if self.ship_grid.center_x - self.ship_grid.w() / 2 <= mx <= self.ship_grid.center_x + self.ship_grid.w() / 2:
                     if self.ship_grid.center_y - self.ship_grid.h() / 2 <= my <= self.ship_grid.center_y + self.ship_grid.h() / 2:
-                        self.picking_up_crd = (mx, my)
-        if self.picking_up_crd is not None and not any(mouce_pressed):
-            self.picking_up_crd = None
-            self.put_down_crd = (mx, my)
+                        if self.unset_count > 0:
+                            self.picked_ship = PickedUpShip((mx, my), self.create_picked_up_ship_grid())
+                        # self.picked_ship.picking_up_crd = (mx, my)
+                        # self.picked_ship.ship.center_x = self.ship_grid.center_x
+                        # self.picked_ship.ship.center_x = self.ship_grid.center_y
+        # if self.picked_ship.picking_up_crd is not None and not any(mouce_pressed):
+        #     self.picked_ship.picking_up_crd = None
 
     def draw(self, sc: pygame.Surface):
         self.button_dec.draw(sc)
         self.button_inc.draw(sc)
         self.label.draw(sc)
+        if self.unset_count > 0:
+            self.ship_grid.bg_color = RED
+            self.ship_grid.grid_color = WHITE
+        if self.unset_count <= 0:
+            self.ship_grid.bg_color = DARK_RED
+            self.ship_grid.grid_color = GREY
         self.ship_grid.draw(sc)
+
+    def change_count(self, count_delta):
+        # self.player_settings.ships_count[self.ship_size] += count_delta
+        self.unset_count += count_delta
+        self.label.change_text(self.get_str())
+
+    def set_count(self, new_count):
+        self.unset_count = new_count
+        self.label.change_text(self.get_str())
 
 
 class ShipsPanel(IDrawedOnScreen, IEventProcessed):
@@ -587,7 +562,15 @@ class ShipsPanel(IDrawedOnScreen, IEventProcessed):
         self.ship_panels = {}
         for i in range(4):
             self.ship_panels[4 - i] = ShipCountPanel(4 - i, player_settings,
-                                                     (x0, y0 + i * cell_size * interligne), cell_size)
+                                                     (x0, y0 + (i + 1.5) * cell_size * interligne), cell_size)
+
+        self.random_button = Button(x0, y0, cell_size * 3, cell_size,
+                                    pygame.font.SysFont(DEFAULT_FONT_NAME, int(cell_size * 0.6)).render('random', True,
+                                                                                                        WHITE), RED)
+        self.clear_button = Button(x0 + cell_size * 4 + cell_size * (interligne - 1), y0, cell_size * 3, cell_size,
+                                   pygame.font.SysFont(DEFAULT_FONT_NAME, int(cell_size * 0.6)).render('clear', True,
+                                                                                                       WHITE), RED)
+
         # self.x4_ship_count = ShipCountPanel(4, player_settings, (x0, y0 + 0 * cell_size * interligne), cell_size)
         # self.x3_ship_count = ShipCountPanel(3, player_settings, (x0, y0 + 1 * cell_size * interligne), cell_size)
         # self.x2_ship_count = ShipCountPanel(2, player_settings, (x0, y0 + 2 * cell_size * interligne), cell_size)
@@ -596,6 +579,9 @@ class ShipsPanel(IDrawedOnScreen, IEventProcessed):
     def process_events(self, events, mouce_pressed, keys_pressed):
         for p in self.ship_panels.values():
             p.process_events(events, mouce_pressed, keys_pressed)
+        self.random_button.process_events(events, mouce_pressed, keys_pressed)
+        self.clear_button.process_events(events, mouce_pressed, keys_pressed)
+
         # self.x4_ship_count.process_events(events, mouce_pressed, keys_pressed)
         # self.x3_ship_count.process_events(events, mouce_pressed, keys_pressed)
         # self.x2_ship_count.process_events(events, mouce_pressed, keys_pressed)
@@ -604,6 +590,17 @@ class ShipsPanel(IDrawedOnScreen, IEventProcessed):
     def draw(self, sc: pygame.Surface):
         for p in self.ship_panels.values():
             p.draw(sc)
+        self.random_button.draw(sc)
+        self.clear_button.draw(sc)
+
+    def change_count(self, ship_size, count_delta: int):
+        """
+        :param count_delta: на сколько изменилось количество (например -1 = уменьшилось на 1)
+        """
+        self.ship_panels[ship_size].change_count(count_delta)
+
+    def set_count(self, ship_size, new_count: int):
+        self.ship_panels[ship_size].set_count(new_count)
 
 
 class ShipPickingController(IEventProcessed, IDrawedOnScreen):
@@ -613,26 +610,74 @@ class ShipPickingController(IEventProcessed, IDrawedOnScreen):
         self.field_panel = field_panel
         self.ships_panel = ships_panel
 
+        self.picked_ship: PickedUpShip | None = None
+
     def draw(self, sc: pygame.Surface):
-        mx, my = pygame.mouse.get_pos()
-        for p in self.ships_panel.ship_panels.values():
-            if p.picking_up_crd is not None:
-                delta_x = mx - p.picking_up_crd[0]
-                delta_y = my - p.picking_up_crd[1]
-                p.picked_ship.center_x = p.ship_grid.center_x + delta_x
-                p.picked_ship.center_y = p.ship_grid.center_y + delta_y
-                p.picked_ship.draw(sc)
+        if self.picked_ship is not None:
+            mx, my = pygame.mouse.get_pos()
+            delta_x = mx - self.picked_ship.picking_up_crd[0]
+            delta_y = my - self.picked_ship.picking_up_crd[1]
+            self.picked_ship.ship_grid.center_x = self.picked_ship.ship_center0[0] + delta_x
+            self.picked_ship.ship_grid.center_y = self.picked_ship.ship_center0[1] + delta_y
+            self.picked_ship.ship_grid.draw(sc)
 
-            if p.put_down_crd is not None:
-
-                p.put_down_crd = None
-
+        # for p in self.ships_panel.ship_panels.values():
+        #     if p.picking_up_crd is not None:
+        #         delta_x = mx - p.picking_up_crd[0]
+        #         delta_y = my - p.picking_up_crd[1]
+        #         p.picked_ship.center_x = p.ship_grid.center_x + delta_x
+        #         p.picked_ship.center_y = p.ship_grid.center_y + delta_y
+        #         p.picked_ship.draw(sc)
+        #
+        #     if p.put_down_crd is not None:
+        #         p.put_down_crd = None
 
     def process_events(self, events, mouce_pressed, keys_pressed):
-        for e in events:
-            if e.type == pygame.KEYDOWN:
-                if e.key == pygame.K_r:
-                    ...
+        for p in self.ships_panel.ship_panels.values():
+            if p.picked_ship is not None:
+                self.picked_ship = p.picked_ship
+                p.picked_ship = None
+
+        if self.picked_ship is not None:
+            for e in events:
+                if e.type == pygame.KEYDOWN:
+                    if e.key == pygame.K_r:
+                        self.picked_ship.ship_grid.swap_axes()
+
+            self.field_panel.ship_grid = self.picked_ship.ship_grid
+
+        if not any(mouce_pressed):
+            self.picked_ship = None
+            if self.field_panel.ship_grid is not None:
+                success = self.field_panel.try_set_ship()
+                if success:
+                    self.ships_panel.change_count(self.field_panel.get_shipRect().size, -1)
+                    self.field_panel.ship_grid = None
+                    self.picked_ship = None
+
+        if self.ships_panel.random_button.is_clicked():
+            try:
+                ships = RandomShipsSetter.set_random_ships(
+                    np.full((self.field_panel.field.w, self.field_panel.field.h), MyCell.empty),
+                    self.field_panel.player_settings.ships_count)
+                self.field_panel.field.ships = ships  # TODO небезопасное присваивание
+                for i in range(1, 4 + 1):
+                    self.ships_panel.set_count(i, 0)
+
+                # self.field_panel.field.clear()
+                # for ship in self.
+            except:
+                pass  # TODO: отобразить на экране, что расположить корабли не удалось
+
+        if self.ships_panel.clear_button.is_clicked():
+            self.field_panel.field.clear()
+            for i in range(1, 4 + 1):
+                self.ships_panel.set_count(i, self.ships_panel.ship_panels[i].player_settings.ships_count[i])
+
+        if len(self.field_panel.deleted_ships) != 0:
+            for ship in self.field_panel.deleted_ships:
+                self.ships_panel.change_count(ship.size, 1)
+            self.field_panel.deleted_ships.clear()
 
 
 class SetShipsScreen(SettingsScreen):
@@ -642,15 +687,13 @@ class SetShipsScreen(SettingsScreen):
         w, h = sc.get_size()
         cell_size = 30
 
-        self.left_field_panel = FieldSettingsPanel(settings.left_settings, w / 2 - w * 0.18, h * 0.3, cell_size,
-                                                   is_left=True)
-        self.right_field_panel = FieldSettingsPanel(settings.right_settings, w / 2 + w * 0.18, h * 0.3, cell_size,
-                                                    is_left=False)
+        self.left_field_panel = FieldSettingsPanel(settings.left_settings, w / 2 - w * 0.2, h * 0.3, cell_size, True)
+        self.right_field_panel = FieldSettingsPanel(settings.right_settings, w / 2 + w * 0.2, h * 0.3, cell_size, False)
 
         self.left_ships_panel = ShipsPanel(settings.left_settings, (
-            self.left_field_panel.center_x - self.left_field_panel.grid.w() / 2, h * 0.7), cell_size, True)
-        self.right_ships_panel = ShipsPanel(settings.left_settings, (
-            self.right_field_panel.center_x - self.right_field_panel.grid.w() / 2, h * 0.7), cell_size, False)
+            self.left_field_panel.center_x - self.left_field_panel.grid.w() / 2, h * 0.68), cell_size, True)
+        self.right_ships_panel = ShipsPanel(settings.right_settings, (
+            self.right_field_panel.center_x - self.right_field_panel.grid.w() / 2, h * 0.68), cell_size, False)
 
         self.left_ship_picking_conroller = ShipPickingController(self.left_field_panel, self.left_ships_panel)
         self.right_ship_picking_conroller = ShipPickingController(self.right_field_panel, self.right_ships_panel)
@@ -661,6 +704,8 @@ class SetShipsScreen(SettingsScreen):
         self.right_field_panel.process_events(events, mouce_pressed, keys_pressed)
         self.left_ships_panel.process_events(events, mouce_pressed, keys_pressed)
         self.right_ships_panel.process_events(events, mouce_pressed, keys_pressed)
+        self.left_ship_picking_conroller.process_events(events, mouce_pressed, keys_pressed)
+        self.right_ship_picking_conroller.process_events(events, mouce_pressed, keys_pressed)
 
     def draw(self):
         super().draw()
@@ -691,7 +736,7 @@ class PlayerSettings:
 
         self.field_size = [10, 10]
         self.ships_count = DEFAULT_SHIPS_COUNT.copy()
-        self.ships: list[Ship] = []
+        self.ships: list[ShipRect] = []
 
 
 class Settings:

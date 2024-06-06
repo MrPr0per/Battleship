@@ -3,14 +3,17 @@ import time
 
 import numpy as np
 
+from interface.interface_main import ScreensController, Settings, PlayerIdentity
 from settings import *
 import pygame
-from main import Player, MyFildCells, OpponentCells
-from ai import AI, RandomAI
+from base_elements import MyCell, OpponentCell
+from gameplay import Player
+from ai import AI, RandomAI, SmartAI
 from animation import Animation
 from enum import Enum, auto
 
-# перед началом игры другой маинлуп с менюшками: 
+
+# перед началом игры другой маинлуп с менюшками:
 # - выбор левого, правого игрока из (чел, тупой аи, умный аи)
 # - расстановка кораблей
 
@@ -38,12 +41,17 @@ class GuiGameState(Enum):
 
 
 class Game:
-    def __init__(self):
+    def __init__(self, settings: Settings):
+        pl1_class = self.get_class_by_identity(settings.left_settings.player_identity)
+        pl2_class = self.get_class_by_identity(settings.right_settings.player_identity)
+
         self.players = [
-            Player(10, 10, DEFAULT_SHIPS_COUNT),
             # Player(10, 10, DEFAULT_SHIPS_COUNT),
-            RandomAI(10, 10, DEFAULT_SHIPS_COUNT),
-            # RandomAI(6, 10, DEFAULT_SHIPS_COUNT),
+            # # Player(10, 10, DEFAULT_SHIPS_COUNT),
+            # RandomAI(10, 10, DEFAULT_SHIPS_COUNT),
+            # # RandomAI(6, 10, DEFAULT_SHIPS_COUNT),
+
+            pl1_class(*settings.left_settings.field_size, ) # TODO
         ]
         self.players[0].set_opponent(self.players[1])
         self.players[1].set_opponent(self.players[0])
@@ -51,6 +59,17 @@ class Game:
 
         self.last_shoot_result = None
         self.is_need_to_change_player = False
+
+    @staticmethod
+    def get_class_by_identity(identity: PlayerIdentity):
+        if identity == PlayerIdentity.human:
+            return Player
+        elif identity == PlayerIdentity.randomAI:
+            return RandomAI
+        elif identity == PlayerIdentity.smartAI:
+            return SmartAI
+        else:
+            raise NotImplemented()
 
     def current_player(self):
         return self.players[self.current_player_index]
@@ -79,21 +98,23 @@ class Game:
 
 class Gui:
     color_by_cell = {
-        MyFildCells.empty: None,
-        MyFildCells.intact_ship: (230, 230, 230),
-        MyFildCells.missed_shot: (50, 50, 50),
-        MyFildCells.destroyed_ship: (200, 100, 100),
+        MyCell.empty: None,
+        MyCell.intact_ship: (230, 230, 230),
+        MyCell.missed_shot: (50, 50, 50),
+        MyCell.destroyed_ship: (200, 100, 100),
 
-        OpponentCells.unknown: None,
-        OpponentCells.empty: (100, 100, 100),
-        OpponentCells.ship: (200, 100, 100)
+        OpponentCell.unknown: None,
+        OpponentCell.empty: (100, 100, 100),
+        OpponentCell.ship: (200, 100, 100)
     }
 
-    def __init__(self, game: Game):
+    def __init__(self, sc, clock, game: Game):
         pygame.init()
-        self.sc = pygame.display.set_mode((SC_W, SC_H))
+        # self.sc = pygame.display.set_mode((SC_W, SC_H))
+        self.sc = sc
         pygame.display.set_caption('v0.3')
-        self.clock = pygame.time.Clock()
+        # self.clock = pygame.time.Clock()
+        self.clock = clock
 
         self.game = game
 
@@ -162,7 +183,7 @@ class Gui:
                     if not (0 <= x < w and 0 <= y < h): continue
 
                     if event.button == 1:
-                        if self.game.current_player().other_field[x, y] != OpponentCells.unknown: continue
+                        if self.game.current_player().other_field[x, y] != OpponentCell.unknown: continue
                         self.game.shoot(x, y)
                         if self.game.last_shoot_result.is_success():
                             self.animations.add(Animation(*self.get_sc_crd(x, y), 'BOOM'))
@@ -297,8 +318,16 @@ class Gui:
 
 
 def main():
-    game = Game()
-    gui = Gui(game)
+    pygame.init()
+    sc = pygame.display.set_mode((SC_W, SC_H))
+    pygame.display.set_caption('v0.3')
+    clock = pygame.time.Clock()
+
+    sc_controller = ScreensController(sc, clock)
+    settings = sc_controller.mainloop()
+
+    game = Game(settings)
+    gui = Gui(sc, clock, game)
     gui.mainloop()
 
 

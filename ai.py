@@ -3,7 +3,8 @@ import time
 
 import numpy as np
 
-from main import Player, OpponentCells
+from base_elements import OpponentCell
+from gameplay import Player
 
 
 class AI:
@@ -20,7 +21,7 @@ class RandomAI(AI, Player):
 
     def set_opponent(self, other_player: 'Player'):
         self.opponent = other_player
-        self.other_field = np.full(self.opponent.my_field.shape, OpponentCells.unknown)
+        self.other_field = np.full(self.opponent.my_field.shape, OpponentCell.unknown)
         self.user_marks = np.full(self.opponent.my_field.shape, False, dtype=bool)
         w, h = self.opponent.my_field.shape
         self.not_cllicked_crds = [(x, y) for x in range(w) for y in range(h)]
@@ -39,3 +40,7 @@ class RandomAI(AI, Player):
     def is_ready(self):
         if self.end_step_time is None: self.end_step_time = time.time()
         return self.end_step_time is None or time.time() - self.end_step_time > self.cooldown
+
+
+class SmartAI(AI, Player):
+    pass
