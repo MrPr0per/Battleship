@@ -6,7 +6,7 @@ import numpy as np
 from interface.interface_main import ScreensController, Settings, PlayerIdentity
 from settings import *
 import pygame
-from base_elements import MyCell, OpponentCell
+from base_elements import MyCell, OpponentCell, ShootStatus
 from gameplay import Player
 from ai import AI, RandomAI, SmartAI
 from animation import Animation
@@ -58,7 +58,7 @@ class Game:
         self.players[1].set_opponent(self.players[0])
         self.current_player_index = 0
 
-        self.last_shoot_result = None
+        self.last_shoot_result : ShootStatus | None = None
         self.is_need_to_change_player = False
 
     @staticmethod
@@ -111,34 +111,62 @@ class Gui:
 
     def __init__(self, sc, clock, game: Game):
         pygame.init()
-        # self.sc = pygame.display.set_mode((SC_W, SC_H))
         self.sc = sc
-        pygame.display.set_caption('v0.3')
-        # self.clock = pygame.time.Clock()
         self.clock = clock
 
         self.game = game
+        self.gui_game_state = GuiGameState.player_is_move
 
-        # self.margin_border_left = 0.1
-        # self.margin_border_right = 0.1
-        # self.margin_middle = 0.1
         self.cell_size = 40  # [px]
-
         # координаты верхеного левого угла у левого и правого полей на экране
         self.p_left, self.p_right = self.get_top_left_corners()
-
         self.mark_sprite = pygame.image.load('sprites/flag.png')
         # TODO: перемещать спрайт в центр клетки, если cell_size != 40
         if self.cell_size != 40: raise Exception('отмасштабировать спрайт, если cell_size != 40')
 
         self.animations = set()  # текущие анимации
 
-        self.font = pygame.font.SysFont('Lucida Console', 24)
-        self.transfer_text1 = self.font.render('Нажмите любую клавишу, чтобы передать управление', True,
-                                               (255, 255, 255))
-        self.transfer_text2 = self.font.render('Нажмите любую клавишу', True, (255, 255, 255))
+        self.transfer_text1 = DEFAULT_FONT.render('Нажмите любую клавишу, чтобы передать управление', True, WHITE)
+        self.transfer_text2 = DEFAULT_FONT.render('Нажмите любую клавишу', True, WHITE)
 
-        self.gui_game_state = GuiGameState.player_is_move
+    def mainloop(self):
+        while True:
+            events = pygame.event.get()
+            mouce_pressed = pygame.mouse.get_pressed()
+            keys_pressed = pygame.key.get_pressed()
+            self.process_events(events, mouce_pressed, keys_pressed)
+
+            if isinstance(self.game.current_opponent(), AI) and self.game.is_need_to_change_player:
+                self.game.change_player()
+            if isinstance(self.game.current_player(), AI):
+                if self.game.current_player().is_ready():
+                    if self.game.is_need_to_change_player:
+                        self.game.current_player().end_step_time = None
+                        self.game.change_player()
+                    else:
+                        x, y = self.game.current_player().make_step(self.game)
+                        # self.game.current_player().make_step(self.game, *self.game.current_player().other_field.shape)
+
+                        if self.game.last_shoot_result.is_success():
+                            self.animations.add(Animation(*self.get_sc_crd(x, y), 'BOOM'))
+                        else:
+                            self.animations.add(Animation(*self.get_sc_crd(x, y), 'BULK'))
+
+            self.animations = {anim for anim in self.animations if not anim.is_over()}
+
+            self.sc.fill((0, 0, 0))
+
+            if self.gui_game_state != GuiGameState.splash:
+                self.draw_ui()
+                self.draw_animations()
+            else:
+                self.draw_splash()
+
+            # if self.game.is_need_to_change_player and len(self.animations) == 0:
+            #     self.game.change_player()
+
+            pygame.display.update()
+            self.clock.tick(FPS)
 
     def get_field_crd(self, mouse_x, mouse_y):
         """
@@ -208,45 +236,6 @@ class Gui:
 
                     if event.button == 3:
                         self.game.current_player().user_marks[x, y] = not self.game.current_player().user_marks[x, y]
-
-    def mainloop(self):
-        while True:
-            events = pygame.event.get()
-            mouce_pressed = pygame.mouse.get_pressed()
-            keys_pressed = pygame.key.get_pressed()
-            self.process_events(events, mouce_pressed, keys_pressed)
-
-            if isinstance(self.game.current_opponent(), AI) and self.game.is_need_to_change_player:
-                self.game.change_player()
-            if isinstance(self.game.current_player(), AI):
-                if self.game.current_player().is_ready():
-                    if self.game.is_need_to_change_player:
-                        self.game.current_player().end_step_time = None
-                        self.game.change_player()
-                    else:
-                        x, y = self.game.current_player().make_step(self.game)
-                        # self.game.current_player().make_step(self.game, *self.game.current_player().other_field.shape)
-
-                        if self.game.last_shoot_result.is_success():
-                            self.animations.add(Animation(*self.get_sc_crd(x, y), 'BOOM'))
-                        else:
-                            self.animations.add(Animation(*self.get_sc_crd(x, y), 'BULK'))
-
-            self.animations = {anim for anim in self.animations if not anim.is_over()}
-
-            self.sc.fill((0, 0, 0))
-
-            if self.gui_game_state != GuiGameState.splash:
-                self.draw_ui()
-                self.draw_animations()
-            else:
-                self.draw_splash()
-
-            # if self.game.is_need_to_change_player and len(self.animations) == 0:
-            #     self.game.change_player()
-
-            pygame.display.update()
-            self.clock.tick(FPS)
 
     def draw_ui(self):
 

@@ -1,4 +1,5 @@
 import random
+import typing
 
 import numpy as np
 
@@ -159,7 +160,7 @@ class Player:
         self.intact_counter = IntactShipsCounter(self.ships)  # счетчик живых клеток у каждого корабля
         self.intact_ships_count = len(self.ships)  # количество живых кораблей всего
 
-        self.opponent = None
+        self.opponent: typing.Union['Player', None] = None
         self.other_field = None
         self.user_marks = None  # отметки игрока на поле противника
 
@@ -189,3 +190,4 @@ class Player:
     def mark_shoot(self, x, y, is_there_a_ship):
         # if self.other_field[x, y] != OppenentCells.unknown: raise Exception('эта клетка уже отмечена')
         self.other_field[x, y] = OpponentCell.ship if is_there_a_ship else OpponentCell.empty
+        # self.opponent.my_field[x, y] = MyCell.missed_shot
