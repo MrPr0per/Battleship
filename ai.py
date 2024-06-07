@@ -16,10 +16,10 @@ class AI:
 
 
 class RandomAI(AI, Player):
-    def __init__(self, w, h, ships_count):
-        super().__init__(w, h, ships_count)
+    def __init__(self, w, h, ships_count, time_for_game):
+        super().__init__(w, h, ships_count, time_for_game)
         self.not_cllicked_crds = None
-        self.cooldown = 0.7  # [s]
+        self.cooldown = AI_HIT_COOLDOWN  # [s]
         # self.cooldown = 0.1 # [s]
         self.end_step_time = None
 
@@ -47,8 +47,8 @@ class RandomAI(AI, Player):
 
 
 class SmartAI(AI, Player):
-    def __init__(self, w, h, ships_count):
-        super().__init__(w, h, ships_count)
+    def __init__(self, w, h, ships_count, time_for_game):
+        super().__init__(w, h, ships_count, time_for_game)
         self.not_cllicked_crds = None
         # self.cooldown = 0.7  # [s]
         # self.cooldown = 0.1 # [s]
@@ -161,7 +161,8 @@ class SmartAI(AI, Player):
         # нормированный вектор от последнего попадания к первому
 
         next_cell_to_shoot = (shoot_crd[0] + dx, shoot_crd[1] + dy)
-        self.next_cells_to_shoot.append(next_cell_to_shoot)
+        if next_cell_to_shoot in self.not_cllicked_crds:
+            self.next_cells_to_shoot.append(next_cell_to_shoot)
 
     def after_miss_after_2_hit(self, shoot_crd):
         dx = sign(shoot_crd[0] - self.first_hit_crd[0])
@@ -197,7 +198,7 @@ class SmartAI(AI, Player):
 
     def is_ready(self):
         if self.end_step_time is None: self.end_step_time = time.time()
-        return time.time() - self.end_step_time > AI_COOLDOWN
+        return time.time() - self.end_step_time > AI_HIT_COOLDOWN
 
 
 def sign(x):

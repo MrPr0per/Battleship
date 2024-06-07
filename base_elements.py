@@ -45,6 +45,12 @@ class ShootStatus(Enum):
         if self in (ShootStatus.hit, ShootStatus.kill, ShootStatus.total_annihilation): return True
         raise NotImplemented()
 
+    def __str__(self):
+        if self == self.miss: return 'мимо!'
+        if self == self.hit: return 'ранил!'
+        if self == self.kill: return 'убил!'
+        if self == self.total_annihilation: return 'победа!'
+        raise NotImplemented()
 
 class ShipRect:
     def __init__(self, dir_: Dir, size, x, y):

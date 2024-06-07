@@ -314,7 +314,7 @@ class FieldToSetShips:
         self.w = new_w
         self.h = new_h
 
-        old_ships = self.ships
+        old_ships = self.ships.copy()
         self.ships.clear()
         deleted_ships = []
 
@@ -480,7 +480,9 @@ class ShipCountPanel(IDrawedOnScreen, IEventProcessed):
         self.player_settings = player_settings
         self.ship_size = ship_size
         self.cell_size = cell_size
-        self.unset_count = self.player_settings.ships_count[self.ship_size]
+        # self.unset_count = self.player_settings.ships_count[self.ship_size]
+        self.unset_count = 0
+        # TODO: проверку на то, сколько там кораблей осталось
 
         x0, y0 = top_side_point
         self.button_dec = Button(x0, y0, cell_size, cell_size, '-', GREY)
@@ -699,6 +701,8 @@ class SetShipsScreen(SettingsScreen):
         self.left_ship_picking_conroller = ShipPickingController(self.left_field_panel, self.left_ships_panel)
         self.right_ship_picking_conroller = ShipPickingController(self.right_field_panel, self.right_ships_panel)
 
+        self.R_message = pygame.font.SysFont(DEFAULT_FONT_NAME, 18).render('для поворота корабля нажмите [R]', True, WHITE)
+
     def process_events(self, events, mouce_pressed, keys_pressed):
         super().process_events(events, mouce_pressed, keys_pressed)
         self.left_field_panel.process_events(events, mouce_pressed, keys_pressed)
@@ -717,6 +721,8 @@ class SetShipsScreen(SettingsScreen):
         self.left_ship_picking_conroller.draw(self.sc)
         self.right_ship_picking_conroller.draw(self.sc)
 
+        self.sc.blit(self.R_message, (0,0))
+
 
 # endregion
 
@@ -730,7 +736,7 @@ class PlayerSettings:
     def __init__(self):
         self.player_identity = PlayerIdentity.human
 
-        self.time_to_game = datetime.timedelta(minutes=10)
+        self.time_to_game = datetime.timedelta(minutes=3)
 
         # self.field_size = (10, 10)
         # self.ships = []

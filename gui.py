@@ -1,13 +1,14 @@
+import pickle
 import random
 import time
 
 import numpy as np
 
-from interface.interface_main import ScreensController, Settings, PlayerIdentity
+from interface.interface_main import ScreensController, Settings, PlayerIdentity, RenderedTextHolder
 from settings import *
 import pygame
 from base_elements import MyCell, OpponentCell, ShootStatus
-from gameplay import Player
+from gameplay import Player, Timer
 from ai import AI, RandomAI, SmartAI
 from animation import Animation
 from enum import Enum, auto
@@ -33,11 +34,13 @@ class GuiGameState(Enum):
     player_is_move = auto()
     end_of_move = auto()
     splash = auto()
+    gameover = auto()
+    cooldown_before_change_player = auto()
 
-    def next(self):
-        if self == self.player_is_move: return self.end_of_move
-        if self == self.end_of_move: return self.splash
-        if self == self.splash: return self.player_is_move
+    # def next(self):
+    #     if self == self.player_is_move: return self.end_of_move
+    #     if self == self.end_of_move: return self.splash
+    #     if self == self.splash: return self.player_is_move
 
 
 class Game:
@@ -51,15 +54,20 @@ class Game:
             # RandomAI(10, 10, DEFAULT_SHIPS_COUNT),
             # # RandomAI(6, 10, DEFAULT_SHIPS_COUNT),
 
-            pl1_class(*settings.left_settings.field_size, settings.left_settings.ships),
-            pl2_class(*settings.left_settings.field_size, settings.left_settings.ships),
+            pl1_class(*settings.left_settings.field_size, settings.left_settings.ships,
+                      settings.left_settings.time_to_game),
+            pl2_class(*settings.right_settings.field_size, settings.right_settings.ships,
+                      settings.right_settings.time_to_game),
         ]
         self.players[0].set_opponent(self.players[1])
         self.players[1].set_opponent(self.players[0])
         self.current_player_index = 0
+        self.current_player().timer.start()
 
-        self.last_shoot_result : ShootStatus | None = None
+        self.last_shoot_result: ShootStatus | None = None
         self.is_need_to_change_player = False
+
+        self.winner_index = None
 
     @staticmethod
     def get_class_by_identity(identity: PlayerIdentity):
@@ -76,7 +84,10 @@ class Game:
         return self.players[self.current_player_index]
 
     def current_opponent(self):
-        return self.players[(self.current_player_index + 1) % 2]
+        return self.players[self.current_opponent_index()]
+
+    def current_opponent_index(self):
+        return (self.current_player_index + 1) % 2
 
     def shoot(self, x, y):
         self.last_shoot_result = self.current_opponent().get_shoot(x, y)
@@ -84,18 +95,42 @@ class Game:
 
         if not self.last_shoot_result.is_success():
             self.is_need_to_change_player = True
+
+        if self.last_shoot_result == ShootStatus.total_annihilation:
+            self.gameover(self.current_player_index)
         #     self.current_player_index += 1
         #     self.current_player_index %= 2
 
         # return result
 
     def change_player(self):
+        # self.current_player().timer.stop()
         self.is_need_to_change_player = False
         self.current_player_index += 1
         self.current_player_index %= 2
+        # self.current_player().timer.start()
+
+    def check_loose_by_time(self):
+        if self.current_player().timer.remained() <= 0:
+            self.gameover(self.current_opponent_index())
+
+    def gameover(self, winner_index):
+        self.winner_index = winner_index
+        self.current_player().timer.stop()
+        self.current_opponent().timer.stop()
+
+    def save(self):
+        with open(QUICKSAVE_PATH, 'wb') as f:
+            pickle.dump(self, f)
+
+    @classmethod
+    def load(cls):
+        with open(QUICKSAVE_PATH, 'rb') as f:
+            return pickle.load(f)
 
 
 # у игрока и ии должен быть общий метод, отвечающий за получение следующего хода
+
 
 class Gui:
     color_by_cell = {
@@ -111,23 +146,27 @@ class Gui:
 
     def __init__(self, sc, clock, game: Game):
         pygame.init()
-        self.sc = sc
+        self.sc: pygame.Surface = sc
         self.clock = clock
 
         self.game = game
-        self.gui_game_state = GuiGameState.player_is_move
+        self.gui_game_state = GuiGameState.player_is_move  # TODO: перенести это в game
 
         self.cell_size = 40  # [px]
         # координаты верхеного левого угла у левого и правого полей на экране
         self.p_left, self.p_right = self.get_top_left_corners()
         self.mark_sprite = pygame.image.load('sprites/flag.png')
-        # TODO: перемещать спрайт в центр клетки, если cell_size != 40
-        if self.cell_size != 40: raise Exception('отмасштабировать спрайт, если cell_size != 40')
+        # if self.cell_size != 40: raise Exception('отмасштабировать спрайт, если cell_size != 40')
 
         self.animations = set()  # текущие анимации
 
         self.transfer_text1 = DEFAULT_FONT.render('Нажмите любую клавишу, чтобы передать управление', True, WHITE)
         self.transfer_text2 = DEFAULT_FONT.render('Нажмите любую клавишу', True, WHITE)
+        self.game_over_text_render = None
+        self.shoot_status_text_render_holder = RenderedTextHolder()
+        self.save_hint_render = DEFAULT_FONT.render('[F5] - сохранение [F9] - загрузка', True, WHITE)
+
+        self.cooldown_timer = Timer()
 
     def mainloop(self):
         while True:
@@ -136,31 +175,31 @@ class Gui:
             keys_pressed = pygame.key.get_pressed()
             self.process_events(events, mouce_pressed, keys_pressed)
 
-            if isinstance(self.game.current_opponent(), AI) and self.game.is_need_to_change_player:
-                self.game.change_player()
-            if isinstance(self.game.current_player(), AI):
-                if self.game.current_player().is_ready():
-                    if self.game.is_need_to_change_player:
-                        self.game.current_player().end_step_time = None
-                        self.game.change_player()
-                    else:
-                        x, y = self.game.current_player().make_step(self.game)
-                        # self.game.current_player().make_step(self.game, *self.game.current_player().other_field.shape)
+            # if not isinstance(self.game.current_player(), AI) and self.game.is_need_to_change_player:
+            #     self.game.change_player()
 
-                        if self.game.last_shoot_result.is_success():
-                            self.animations.add(Animation(*self.get_sc_crd(x, y), 'BOOM'))
-                        else:
-                            self.animations.add(Animation(*self.get_sc_crd(x, y), 'BULK'))
+            self.game.check_loose_by_time()
+
+            if self.game.winner_index is not None:
+                self.gui_game_state = GuiGameState.gameover
 
             self.animations = {anim for anim in self.animations if not anim.is_over()}
 
             self.sc.fill((0, 0, 0))
 
-            if self.gui_game_state != GuiGameState.splash:
+            if self.gui_game_state in (
+                    GuiGameState.player_is_move, GuiGameState.end_of_move, GuiGameState.cooldown_before_change_player):
                 self.draw_ui()
                 self.draw_animations()
-            else:
+                self.draw_timers()
+            elif self.gui_game_state == GuiGameState.splash:
                 self.draw_splash()
+                self.draw_timers()
+            elif self.gui_game_state == GuiGameState.gameover:
+                self.draw_gameover_screen()
+                self.draw_timers()
+            else:
+                raise NotImplemented()
 
             # if self.game.is_need_to_change_player and len(self.animations) == 0:
             #     self.game.change_player()
@@ -191,19 +230,54 @@ class Gui:
             pygame.quit()
             quit()
 
+        def is_any_key_pressed(event_: pygame.event.Event):
+            return event_.type == pygame.KEYDOWN and event_.key not in (pygame.K_F5, pygame.K_F9, pygame.K_ESCAPE)
+
         if not isinstance(self.game.current_player(), Player): return
 
         for event in events:
             if event.type == pygame.QUIT: quit_game()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE: quit_game()
+                if event.key == pygame.K_F5:
+                    self.game.save()
+                if event.key == pygame.K_F9:
+                    self.game = Game.load()
 
-        if self.gui_game_state == GuiGameState.splash:
-            for event in events:
-                if event.type == pygame.KEYDOWN:
-                    self.gui_game_state = self.gui_game_state.next()
-                    self.game.change_player()
         if self.gui_game_state == GuiGameState.player_is_move:
+            # if self.game.is_need_to_change_player and self.game.current_player().is_ready_to_change_player():
+            #     self.game.current_player().end_of_move_time = None
+            #     self.game.current_player().timer.stop()
+            #     self.game.change_player()
+            #     self.game.current_player().timer.start()
+            #     return
+
+            if isinstance(self.game.current_player(), AI):
+                if self.game.current_player().is_ready():
+                    # if self.game.is_need_to_change_player:
+                    #     self.game.current_player().end_step_time = None
+                    #     self.game.current_player().timer.stop()
+                    #     self.game.change_player()
+                    #     self.game.current_player().timer.start()
+                    # else:
+                    x, y = self.game.current_player().make_step(self.game)
+                    # self.game.current_player().make_step(self.game, *self.game.current_player().other_field.shape)
+
+                    if self.game.last_shoot_result.is_success():
+                        self.animations.add(Animation(*self.get_sc_crd(x, y), 'BOOM'))
+                    else:
+                        self.animations.add(Animation(*self.get_sc_crd(x, y), 'BULK'))
+                        self.start_cooldown_before_change_player()
+                        self.game.current_player().end_step_time = None
+
+                        # self.gui_game_state = GuiGameState.cooldown_before_change_player
+
+                        # self.game.current_player().timer.stop()
+                        # # self.game.change_player()
+                        # self.game.is_need_to_change_player = True
+                        # self.game.current_player().end_of_move_time = time.time()
+                        # self.game.current_player().timer.start()
+
             for event in events:
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_x, mouse_y = pygame.mouse.get_pos()
@@ -218,17 +292,52 @@ class Gui:
                             self.animations.add(Animation(*self.get_sc_crd(x, y), 'BOOM'))
                         else:
                             self.animations.add(Animation(*self.get_sc_crd(x, y), 'BULK'))
-                            if not isinstance(self.game.current_opponent(), AI):
-                                self.gui_game_state = self.gui_game_state.next()
+                            # if not isinstance(self.game.current_opponent(), AI):
+                            #     # если оппонент - не ии, то нужно передать управление через черный экран
+                            #     self.gui_game_state = GuiGameState.end_of_move
+                            # else:
+                            #     self.game.current_player().timer.stop()
+                            #     self.game.change_player()
+                            #     self.game.current_player().timer.start()
+
+                            # if not isinstance(self.game.current_player(), AI):
+                            #     self.gui_game_state = GuiGameState.end_of_move
+                            # else:
+                            #     self.game.current_player().timer.stop()
+                            #     self.game.change_player()
+                            #     self.game.current_player().timer.start()
+
+                            if not isinstance(self.game.current_opponent(), AI) and not isinstance(
+                                    self.game.current_player(), AI):
+                                self.gui_game_state = GuiGameState.end_of_move
+                            else:
+                                self.start_cooldown_before_change_player()
+                                # self.gui_game_state = GuiGameState.cooldown_before_change_player
+                                # self.game.current_player().timer.stop()
+                                # # self.game.change_player()
+                                # self.game.is_need_to_change_player = True
+                                # self.game.current_player().end_of_move_time = time.time()
+                                # self.game.current_player().timer.start()
+
                     if event.button == 3:
                         self.game.current_player().user_marks[x, y] = not self.game.current_player().user_marks[x, y]
-        if self.gui_game_state == GuiGameState.end_of_move:
+        elif self.gui_game_state == GuiGameState.end_of_move:
             for event in events:
-                if event.type == pygame.KEYDOWN:
-                    self.gui_game_state = self.gui_game_state.next()
+                if is_any_key_pressed(event):
+                    if isinstance(self.game.current_player(), AI):
+                        raise AssertionError('после ии ход должен сразу передваться игроку, минуя end_of_move и splash')
+                    else:
+                        if isinstance(self.game.current_opponent(), AI):
+                            self.gui_game_state = GuiGameState.player_is_move
+                            self.game.current_player().timer.stop()
+                            self.game.change_player()
+                            self.game.current_player().timer.start()
+                        else:
+                            # если оппонент - не ии (человек), то нужно передать управление через черный экран
+                            self.gui_game_state = GuiGameState.splash
+                            self.game.current_player().timer.stop()
 
-            for event in events:
-                if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.type == pygame.MOUSEBUTTONDOWN:  # оставляем возможность ставить крестики даже после промаха
                     mouse_x, mouse_y = pygame.mouse.get_pos()
                     x, y = self.get_field_crd(mouse_x, mouse_y)
                     w, h = self.game.current_player().other_field.shape
@@ -236,22 +345,86 @@ class Gui:
 
                     if event.button == 3:
                         self.game.current_player().user_marks[x, y] = not self.game.current_player().user_marks[x, y]
+        elif self.gui_game_state == GuiGameState.splash:
+            for event in events:
+                if is_any_key_pressed(event):
+                    # self.gui_game_state = self.gui_game_state.next()
+                    self.gui_game_state = GuiGameState.player_is_move
+                    self.game.change_player()
+                    self.game.current_player().timer.start()
+        elif self.gui_game_state == GuiGameState.cooldown_before_change_player:
+            if self.cooldown_timer.is_time_up():
+                self.game.change_player()
+                self.game.current_player().timer.start()
+                self.gui_game_state = GuiGameState.player_is_move
+
+            # # self.game.change_player()
+            # self.game.is_need_to_change_player = True
+            # self.game.current_player().end_of_move_time = time.time()
+            # self.game.current_player().timer.start()
+
+        elif self.gui_game_state == GuiGameState.gameover:
+            for event in events:
+                if is_any_key_pressed(event):
+                    quit_game()
+        else:
+            raise NotImplemented()
+
+    def start_cooldown_before_change_player(self):
+        self.gui_game_state = GuiGameState.cooldown_before_change_player
+        self.game.current_player().timer.stop()
+        self.game.current_opponent().timer.stop()
+        self.cooldown_timer.set_time(MOVE_COOLDOWN)
+        self.cooldown_timer.start()
+
+    def draw_timers(self):
+        r1 = DEFAULT_FONT.render(self.game.players[0].timer.__str__(), True, WHITE)
+        r2 = DEFAULT_FONT.render(self.game.players[1].timer.__str__(), True, WHITE)
+        w, h = self.sc.get_size()
+        self.sc.blit(r1, (r1.get_width() * 0.5, r1.get_height() * 2))
+        self.sc.blit(r2, (w - r2.get_width() * (1 + 0.5), r2.get_height() * 2))
 
     def draw_ui(self):
 
         if self.game.current_player_index == 0:
-            self.draw_field(*self.p_left, self.game.current_player().my_field)
+            self.draw_field(*self.p_left, self.game.current_player().my_field,
+                            is_hide=isinstance(self.game.current_player(), AI) and HIDE_AI_FIELD)
             self.draw_field(*self.p_right, self.game.current_player().other_field,
                             self.game.current_player().user_marks)
         else:
-            self.draw_field(*self.p_right, self.game.current_player().my_field)
+            self.draw_field(*self.p_right, self.game.current_player().my_field,
+                            is_hide=isinstance(self.game.current_player(), AI) and HIDE_AI_FIELD)
             self.draw_field(*self.p_left, self.game.current_player().other_field, self.game.current_player().user_marks)
 
         if self.gui_game_state == GuiGameState.end_of_move:
-            self.sc.blit(self.transfer_text1, (0, 0))
+            self.sc.blit(self.transfer_text1, (TEXT_MATGIN_LEFT_RIGHT, TEXT_MATGIN_TOP_BOT))
 
-    def draw_field(self, x0, y0, field, marks=None):
+        shoot_status_str = self.game.last_shoot_result.__str__()
+        if shoot_status_str == 'None': shoot_status_str = ''
+        shoot_status_render = self.shoot_status_text_render_holder[shoot_status_str]
+        self.sc.blit(shoot_status_render, (
+            TEXT_MATGIN_LEFT_RIGHT, self.sc.get_height() - shoot_status_render.get_height() - TEXT_MATGIN_TOP_BOT))
+
+    def draw_gameover_screen(self):
+        self.draw_field(*self.p_left, self.game.players[0].my_field)
+        self.draw_field(*self.p_right, self.game.players[1].my_field)
+
+        if self.game_over_text_render is None:
+            winner = 'Left player' if self.game.winner_index == 0 else 'Right player'
+            self.game_over_text_render = DEFAULT_FONT.render(f'{winner} is win!', True, WHITE)
+        self.sc.blit(self.game_over_text_render, (
+            self.sc.get_width() / 2 - self.game_over_text_render.get_width() / 2,
+            self.sc.get_height() - self.game_over_text_render.get_height() * 1.5
+        ))
+
+    def draw_field(self, x0, y0, field, marks=None, is_hide=False):
         w, h = field.shape
+
+        if is_hide:
+            pygame.draw.rect(self.sc, (25, 25, 25), (x0, y0, w * self.cell_size, h * self.cell_size,))
+            self.draw_grid(x0, y0, w, h)
+            return
+
         for y in range(h):
             for x in range(w):
                 cell = field[x, y]

@@ -1,9 +1,12 @@
+import datetime
 import random
+import time
 import typing
 
 import numpy as np
 
 from base_elements import ShipRect, Dir, MyCell, ShootStatus, OpponentCell, MyField, OpponentField
+from settings import *
 
 
 class RandomShipsSetter:
@@ -148,7 +151,7 @@ class IntactShipsCounter:
 
 
 class Player:
-    def __init__(self, w, h, ships: list[ShipRect]):
+    def __init__(self, w, h, ships: list[ShipRect], time_for_game: datetime.timedelta):
         # self.my_field = my_field
 
         self.my_field = np.full((w, h), MyCell.empty)
@@ -163,6 +166,10 @@ class Player:
         self.opponent: typing.Union['Player', None] = None
         self.other_field = None
         self.user_marks = None  # отметки игрока на поле противника
+
+        self.timer = Timer(time_for_game.seconds)
+
+        # self.end_of_move_time = None
 
     def set_opponent(self, other_player: 'Player'):
         self.opponent = other_player
@@ -191,3 +198,38 @@ class Player:
         # if self.other_field[x, y] != OppenentCells.unknown: raise Exception('эта клетка уже отмечена')
         self.other_field[x, y] = OpponentCell.ship if is_there_a_ship else OpponentCell.empty
         # self.opponent.my_field[x, y] = MyCell.missed_shot
+
+    # def is_ready_to_change_player(self):
+    #     return time.time() - self.end_of_move_time >= MOVE_COOLDOWN
+
+
+class Timer:
+    def __init__(self, seconds=None):
+        self.seconds_left = seconds
+        self.start_time = None
+
+    def set_time(self, new_seconds_left):
+        self.seconds_left = new_seconds_left
+
+    def start(self):
+        self.start_time = time.time()
+
+    def stop(self):
+        if self.start_time is None: return
+        time_delta = time.time() - self.start_time
+        self.seconds_left -= time_delta
+        self.start_time = None
+
+    def remained(self):
+        if self.start_time is None: return self.seconds_left
+        time_delta = time.time() - self.start_time
+        return max(0, self.seconds_left - time_delta)
+
+    def is_time_up(self):
+        return self.remained() <= 0
+
+    def __str__(self):
+        # s = int(self.remained())
+        # return f'{s // 60}:{s % 60:0>2}:{self.remained() % 1:.2f}'
+        s = self.remained()
+        return f'{int(s // 60)}:{s % 60:0>5.2f}'
