@@ -13,6 +13,8 @@ from ai import AI, RandomAI, SmartAI
 from animation import Animation
 from enum import Enum, auto
 
+from settings import ABC
+
 
 # перед началом игры другой маинлуп с менюшками:
 # - выбор левого, правого игрока из (чел, тупой аи, умный аи)
@@ -30,7 +32,7 @@ from enum import Enum, auto
 # ии ходит только когда нет кулдауна
 # если ходит ии, то не нужно показывать его поле (если сейчас не дебаг мод)
 
-class GuiGameState(Enum):
+class GameState(Enum):
     player_is_move = auto()
     end_of_move = auto()
     splash = auto()
@@ -68,6 +70,10 @@ class Game:
         self.is_need_to_change_player = False
 
         self.winner_index = None
+
+        self.game_state = GameState.player_is_move
+
+        self.last_save_time = None
 
     @staticmethod
     def get_class_by_identity(identity: PlayerIdentity):
@@ -120,14 +126,18 @@ class Game:
         self.current_opponent().timer.stop()
 
     def save(self):
+        self.last_save_time = time.time()
         with open(QUICKSAVE_PATH, 'wb') as f:
             pickle.dump(self, f)
 
     @classmethod
     def load(cls):
         with open(QUICKSAVE_PATH, 'rb') as f:
-            return pickle.load(f)
-
+            game:'Game' = pickle.load(f)
+            time_since_last_save = time.time() - game.last_save_time
+            if game.players[0].timer.start_time is not None: game.players[0].timer.start_time += time_since_last_save
+            if game.players[1].timer.start_time is not None: game.players[1].timer.start_time += time_since_last_save
+            return game
 
 # у игрока и ии должен быть общий метод, отвечающий за получение следующего хода
 
@@ -150,7 +160,7 @@ class Gui:
         self.clock = clock
 
         self.game = game
-        self.gui_game_state = GuiGameState.player_is_move  # TODO: перенести это в game
+        # self.game.game_state = GameState.player_is_move  # TODO: перенести это в game
 
         self.cell_size = 40  # [px]
         # координаты верхеного левого угла у левого и правого полей на экране
@@ -164,7 +174,7 @@ class Gui:
         self.transfer_text2 = DEFAULT_FONT.render('Нажмите любую клавишу', True, WHITE)
         self.game_over_text_render = None
         self.shoot_status_text_render_holder = RenderedTextHolder()
-        self.save_hint_render = DEFAULT_FONT.render('[F5] - сохранение [F9] - загрузка', True, WHITE)
+        self.save_hint_render = pygame.font.SysFont(DEFAULT_FONT_NAME, 18).render('[F5] - сохранение [F9] - загрузка (работают и после закрытия игры)', True, WHITE)
 
         self.cooldown_timer = Timer()
 
@@ -181,21 +191,21 @@ class Gui:
             self.game.check_loose_by_time()
 
             if self.game.winner_index is not None:
-                self.gui_game_state = GuiGameState.gameover
+                self.game.game_state = GameState.gameover
 
             self.animations = {anim for anim in self.animations if not anim.is_over()}
 
             self.sc.fill((0, 0, 0))
 
-            if self.gui_game_state in (
-                    GuiGameState.player_is_move, GuiGameState.end_of_move, GuiGameState.cooldown_before_change_player):
+            if self.game.game_state in (
+                    GameState.player_is_move, GameState.end_of_move, GameState.cooldown_before_change_player):
                 self.draw_ui()
                 self.draw_animations()
                 self.draw_timers()
-            elif self.gui_game_state == GuiGameState.splash:
+            elif self.game.game_state == GameState.splash:
                 self.draw_splash()
                 self.draw_timers()
-            elif self.gui_game_state == GuiGameState.gameover:
+            elif self.game.game_state == GameState.gameover:
                 self.draw_gameover_screen()
                 self.draw_timers()
             else:
@@ -244,7 +254,7 @@ class Gui:
                 if event.key == pygame.K_F9:
                     self.game = Game.load()
 
-        if self.gui_game_state == GuiGameState.player_is_move:
+        if self.game.game_state == GameState.player_is_move:
             # if self.game.is_need_to_change_player and self.game.current_player().is_ready_to_change_player():
             #     self.game.current_player().end_of_move_time = None
             #     self.game.current_player().timer.stop()
@@ -309,7 +319,7 @@ class Gui:
 
                             if not isinstance(self.game.current_opponent(), AI) and not isinstance(
                                     self.game.current_player(), AI):
-                                self.gui_game_state = GuiGameState.end_of_move
+                                self.game.game_state = GameState.end_of_move
                             else:
                                 self.start_cooldown_before_change_player()
                                 # self.gui_game_state = GuiGameState.cooldown_before_change_player
@@ -321,20 +331,20 @@ class Gui:
 
                     if event.button == 3:
                         self.game.current_player().user_marks[x, y] = not self.game.current_player().user_marks[x, y]
-        elif self.gui_game_state == GuiGameState.end_of_move:
+        elif self.game.game_state == GameState.end_of_move:
             for event in events:
                 if is_any_key_pressed(event):
                     if isinstance(self.game.current_player(), AI):
                         raise AssertionError('после ии ход должен сразу передваться игроку, минуя end_of_move и splash')
                     else:
                         if isinstance(self.game.current_opponent(), AI):
-                            self.gui_game_state = GuiGameState.player_is_move
+                            self.game.game_state = GameState.player_is_move
                             self.game.current_player().timer.stop()
                             self.game.change_player()
                             self.game.current_player().timer.start()
                         else:
                             # если оппонент - не ии (человек), то нужно передать управление через черный экран
-                            self.gui_game_state = GuiGameState.splash
+                            self.game.game_state = GameState.splash
                             self.game.current_player().timer.stop()
 
                 if event.type == pygame.MOUSEBUTTONDOWN:  # оставляем возможность ставить крестики даже после промаха
@@ -345,25 +355,25 @@ class Gui:
 
                     if event.button == 3:
                         self.game.current_player().user_marks[x, y] = not self.game.current_player().user_marks[x, y]
-        elif self.gui_game_state == GuiGameState.splash:
+        elif self.game.game_state == GameState.splash:
             for event in events:
                 if is_any_key_pressed(event):
                     # self.gui_game_state = self.gui_game_state.next()
-                    self.gui_game_state = GuiGameState.player_is_move
+                    self.game.game_state = GameState.player_is_move
                     self.game.change_player()
                     self.game.current_player().timer.start()
-        elif self.gui_game_state == GuiGameState.cooldown_before_change_player:
+        elif self.game.game_state == GameState.cooldown_before_change_player:
             if self.cooldown_timer.is_time_up():
                 self.game.change_player()
                 self.game.current_player().timer.start()
-                self.gui_game_state = GuiGameState.player_is_move
+                self.game.game_state = GameState.player_is_move
 
             # # self.game.change_player()
             # self.game.is_need_to_change_player = True
             # self.game.current_player().end_of_move_time = time.time()
             # self.game.current_player().timer.start()
 
-        elif self.gui_game_state == GuiGameState.gameover:
+        elif self.game.game_state == GameState.gameover:
             for event in events:
                 if is_any_key_pressed(event):
                     quit_game()
@@ -371,7 +381,7 @@ class Gui:
             raise NotImplemented()
 
     def start_cooldown_before_change_player(self):
-        self.gui_game_state = GuiGameState.cooldown_before_change_player
+        self.game.game_state = GameState.cooldown_before_change_player
         self.game.current_player().timer.stop()
         self.game.current_opponent().timer.stop()
         self.cooldown_timer.set_time(MOVE_COOLDOWN)
@@ -396,7 +406,7 @@ class Gui:
                             is_hide=isinstance(self.game.current_player(), AI) and HIDE_AI_FIELD)
             self.draw_field(*self.p_left, self.game.current_player().other_field, self.game.current_player().user_marks)
 
-        if self.gui_game_state == GuiGameState.end_of_move:
+        if self.game.game_state == GameState.end_of_move:
             self.sc.blit(self.transfer_text1, (TEXT_MATGIN_LEFT_RIGHT, TEXT_MATGIN_TOP_BOT))
 
         shoot_status_str = self.game.last_shoot_result.__str__()
@@ -404,6 +414,9 @@ class Gui:
         shoot_status_render = self.shoot_status_text_render_holder[shoot_status_str]
         self.sc.blit(shoot_status_render, (
             TEXT_MATGIN_LEFT_RIGHT, self.sc.get_height() - shoot_status_render.get_height() - TEXT_MATGIN_TOP_BOT))
+
+        self.sc.blit(self.save_hint_render, (self.sc.get_width() - self.save_hint_render.get_width() - TEXT_MATGIN_LEFT_RIGHT,
+                                             self.sc.get_height() - self.save_hint_render.get_height() - TEXT_MATGIN_TOP_BOT))
 
     def draw_gameover_screen(self):
         self.draw_field(*self.p_left, self.game.players[0].my_field)
@@ -496,3 +509,52 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+class ConsoleInteface:
+    str_by_cells = {
+        MyCell.empty: '. ',
+        MyCell.intact_ship: '▄▀',
+        MyCell.missed_shot: 'x ',
+        MyCell.destroyed_ship: '# ',
+
+        OpponentCell.unknown: '. ',
+        OpponentCell.empty: 'X ',
+        OpponentCell.ship: '# ',
+    }
+
+    @classmethod
+    def print_fields(cls, main_player_field, other_player_field, main_player_on_left):
+        # формируем построчно сначала поле текущего игрока, потом поле противника
+        w_main, h_main = main_player_field.shape
+        w_other, h_other = other_player_field.shape
+        number_margin = len(str(max(h_main, h_other)))
+        main_player_lines = ['my:', ' ' * (number_margin + 1) + ' '.join(ABC[:w_main])]
+        other_player_lines = ['opponent:', ' ' * (number_margin + 1) + ' '.join(ABC[:w_other])]
+        for y in range(h_main):
+            main_player_lines.append(f'{y + 1}'.rjust(number_margin, ' ') + ' ')
+            for x in range(w_main):
+                main_player_lines[-1] += cls.str_by_cells[main_player_field[x, y]]
+        for y in range(h_other):
+            other_player_lines.append(f'{y + 1}'.rjust(number_margin, ' ') + ' ')
+            for x in range(w_other):
+                other_player_lines[-1] += cls.str_by_cells[other_player_field[x, y]]
+
+        out = ''
+        if main_player_on_left:
+            max_width = max(map(len, main_player_lines))
+        else:
+            max_width = max(map(len, other_player_lines))
+
+        margin = 4
+        # выводим
+        for i in range(max(len(main_player_lines), len(other_player_lines))):
+            main_line = main_player_lines[i] if i < len(main_player_lines) else ''
+            other_line = other_player_lines[i] if i < len(other_player_lines) else ''
+            if main_player_on_left:
+                out += main_line.ljust(max_width + margin) + other_line + '\n'
+            else:
+                out += other_line.ljust(max_width + margin) + main_line + '\n'
+
+        print(out)
+        return out

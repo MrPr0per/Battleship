@@ -205,11 +205,11 @@ class Player:
 
 class Timer:
     def __init__(self, seconds=None):
-        self.seconds_left = seconds
+        self.seconds = seconds
         self.start_time = None
 
-    def set_time(self, new_seconds_left):
-        self.seconds_left = new_seconds_left
+    def set_time(self, new_seconds):
+        self.seconds = new_seconds
 
     def start(self):
         self.start_time = time.time()
@@ -217,13 +217,13 @@ class Timer:
     def stop(self):
         if self.start_time is None: return
         time_delta = time.time() - self.start_time
-        self.seconds_left -= time_delta
+        self.seconds -= time_delta
         self.start_time = None
 
     def remained(self):
-        if self.start_time is None: return self.seconds_left
+        if self.start_time is None: return max(0, self.seconds )
         time_delta = time.time() - self.start_time
-        return max(0, self.seconds_left - time_delta)
+        return max(0, self.seconds - time_delta)
 
     def is_time_up(self):
         return self.remained() <= 0
